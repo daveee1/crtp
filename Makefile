@@ -1,18 +1,17 @@
 CC = gcc
 CFLAGS = -O3 -I.
 
-# List only the entry-point names (e.g., server and client)
-PROGRAMS = server client
-BINS = $(addprefix build/, $(PROGRAMS))
+all: build/server build/client
 
-all: $(BINS)
-
-# Compile a specific executable with all supporting src/ files
-build/%: src/%.c
+# Compiles src/server.c -> build/server
+build/server: src/server.c
 	@mkdir -p build
-	$(CC) $(CFLAGS) $< src/*.c -o $@   # adjust helper path if any
+	$(CC) $(CFLAGS) $< -o $@
+
+# Compiles src/client.c -> build/client
+build/client: src/client.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) $< -o $@
 
 clean:
 	rm -rf build
-
-.PHONY: all clean
