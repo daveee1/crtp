@@ -84,11 +84,28 @@ void print_error(char *error){
 }
 
 int main(int argc, char *argv[]){
-    int socket;
+    int sock, port;
 
     if(argc < 2){
-        print_error("Bad potato");
+        print_error("[SERVER] not enough arguments: specify PORT");
+        exit(0);
     }
+
+    sscanf(argv[1], "%d", &port);
+    
+    sock = socket(AF_INET, SOCK_STREAM, 0);
+    if(sock == -1){
+        print_error("[SERVER] socket not correct");
+        exit(0);
+    }
+
+    // set REUSE ADDRESS option
+    int reuse = 1;
+    if(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0)
+        print_error("[SERVER] setsockopt(SO_REUSEADDR) failed");
+
+    
+    
 
 
 }
