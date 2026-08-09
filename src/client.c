@@ -40,7 +40,7 @@ int main(int argc, char **argv)
     /* Check number of arguments and get IP address and port */
     if (argc < 3)
     {
-        printf("[CLIENT] Usage: <ip_hostname> <port>\n");
+        printf("Usage: <ip_hostname> <port>\n");
         exit(0);
     }
     sscanf(argv[1], "%s", hostname);
@@ -50,7 +50,7 @@ int main(int argc, char **argv)
     in the struct hostent variable */
     if ((hp = gethostbyname(hostname)) == 0)
     {
-        perror("[CLIENT] ERROR gethostbyname");
+        print_client_error("ERROR gethostbyname");
         exit(1);
     }
 
@@ -63,14 +63,14 @@ int main(int argc, char **argv)
     /* create a new socket */
     if ((sd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
     {
-        perror("[CLIENT] ERROR socket");
+        print_client_error("ERROR socket");
         exit(1);
     }
     /* connect the socket to the port and host
     specified in struct sockaddr_in */
     if (connect(sd,(struct sockaddr *)&sin, sizeof(sin)) == -1)
     {
-        perror("[CLIENT] ERROR connect");
+        print_client_error("ERROR connect");
         exit(1);
     }
 
@@ -91,14 +91,14 @@ int main(int argc, char **argv)
         /* Send number of characters */
         if(send(sd, &netLen, sizeof(netLen), 0) == -1)
         {
-            perror("[CLIENT] ERROR send number of characters");
+            print_client_error("ERROR send number of characters");
             exit(1);
         }
         
         /* Send the command */
         if (send(sd, command, len, 0) == -1)
         {
-            perror("[CLIENT] ERROR send command");
+            print_client_error("ERROR send command");
             exit(0);
         }
         
@@ -106,7 +106,7 @@ int main(int argc, char **argv)
         and then the answer itself */
         if(receive(sd, (char *)&netLen, sizeof(netLen)))
         {
-            perror("[CLIENT] ERROR recv");
+            print_client_error("ERROR recv");
             exit(0);
         }
         
@@ -116,7 +116,7 @@ int main(int argc, char **argv)
         answer = malloc(len + 1);
         if(receive(sd, answer, len))
         {
-            perror("[CLIENT] ERROR recv");
+            print_client_error("ERROR recv");
             exit(1);
         }
         answer[len] = 0;

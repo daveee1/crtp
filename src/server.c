@@ -81,12 +81,8 @@ static void handleConnection(int currSd)
             break;
     }
     /* The loop is most likely exited when the connection is terminated */
-    printf("Connection terminated\n");
+    print_server("Connection terminated");
     close(currSd);
-}
-
-void print_error(char *error){
-    printf("%s", error);
 }
 
 int main(int argc, char *argv[]){
@@ -96,21 +92,21 @@ int main(int argc, char *argv[]){
     struct sockaddr_in sin, retSin;
 
     if(argc < 2){
-        print_error("[SERVER] ERROR not enough arguments: specify PORT");
+        print_server_error("[SERVER] ERROR not enough arguments: specify PORT");
         exit(-1);
     }
 
     sscanf(argv[1], "%d", &port);
     
     if((sock = socket(AF_INET, SOCK_STREAM, 0)) == -1){
-        print_error("[SERVER] socket not correct");
+        print_server_error("socket not correct");
         exit(-1);
     }
 
     // set REUSE ADDRESS option
     int reuse = 1;
     if(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0)
-        print_error("[SERVER] ERROR setsockopt(SO_REUSEADDR) failed");
+        print_server_error("setsockopt(SO_REUSEADDR) failed");
 
     /* Initialize the address (struct sokaddr_in) fields */
     memset(&sin, 0, sizeof(sin));
@@ -120,13 +116,13 @@ int main(int argc, char *argv[]){
     
     // BIND socket to the port
     if(bind(sock, (struct sockaddr *) &sin, sizeof(sin)) == -1){
-        print_error("[SERVER] ERROR bind failed");
+        print_server_error("BIND failed");
         exit(-1);
     }
 
     // TODO LISTEN how many clients?
     if(listen(sock, nclients) == -1){
-        print_error("[SERVER] ERROR listen failed");
+        print_server_error("LISTEN failed");
         exit(-1);
     }
 
@@ -138,7 +134,7 @@ int main(int argc, char *argv[]){
     {
         //TODO error or just full?
         if((currSock = accept(sock, (struct sockaddr *) &retSin, &sAddrLen)) == -1){
-            print_error("[SERVER] ERROR ACCEPT failed");
+            print_server_error("ACCEPT failed");
             exit(-1);
         }
         handleConnection(currSock);
