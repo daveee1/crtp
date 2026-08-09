@@ -1,5 +1,6 @@
 #include "headers/server.h"
 
+#define MAX_THREADS 10
 
 
 /* Receive routine: use recv to receive from socket and manage
@@ -85,11 +86,26 @@ static void handleConnection(int currSd)
     close(currSd);
 }
 
+
+/* Thread routine. It calls routine handleConnection()
+   defined in the previous program. */
+static void *connectionHandler(void *arg)
+{
+    int currSock = *(int *)arg;
+    handleConnection(currSock);
+    free(arg);
+    pthread_exit(0);
+    return NULL;
+}
+
+
 int main(int argc, char *argv[]){
-    int sock, port, currSock;
+    int sock, port;
+    int *currSock;
     int nclients = 5;
     int sAddrLen;
     struct sockaddr_in sin, retSin;
+    pthread_t clients[MAX_THREADS];
 
     if(argc < 2){
         print_server_error("[SERVER] ERROR not enough arguments: specify PORT");
@@ -103,7 +119,11 @@ int main(int argc, char *argv[]){
         exit(-1);
     }
 
-    // set REUSE ADDRESS option
+    print_server("SOCKET ACTIVATED");
+    // set REUSE ADDRESS option:
+    // if i close the socket but there are still packets traversing 
+    // then i wait till i receive all the traffic. ALSO even if
+    // i close this socket create a new one on this port anyway
     int reuse = 1;
     if(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0)
         print_server_error("setsockopt(SO_REUSEADDR) failed");
@@ -130,13 +150,23 @@ int main(int argc, char *argv[]){
 
 
     //ACCEPT connections
-    while(1)
+    for(int i = 0; i < MAX_THREADS; i++)
     {
-        //TODO error or just full?
-        if((currSock = accept(sock, (struct sockaddr *) &retSin, &sAddrLen)) == -1){
+        currSock = (int*) malloc(sizeof(int));
+        if((*currSock = accept(sock, (struct sockaddr *) &retSin, &sAddrLen)) == -1){
             print_server_error("ACCEPT failed");
-            exit(-1);
+            // exit(-1);
         }
-        handleConnection(currSock);
+
+        // since 'retSin.sin_addr' has the client id (in binary form)...
+        char s[100];
+        printf("[SERVER] Connection established with client %s:%d\n", 
+                    inet_ntoa(retSin.sin_addr), 
+                    ntohs(retSin.sin_port));
+
+        print_server(s);
+        pthread_create(&clients[i], NULL, connectionHandler, currSock);
     }
+
+    return 0;
 }

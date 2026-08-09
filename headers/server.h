@@ -7,6 +7,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <pthread.h>
 
 static int receive(int sd, char *retBuf, int size);
 static void handleConnection(int currSd);
