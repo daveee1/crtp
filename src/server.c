@@ -2,6 +2,19 @@
 
 #define MAX_THREADS 10
 
+typedef struct {
+    int socket_fd;
+    char ip[16];
+    int port;
+    pthread_t thread_id;
+    int active;               /* 1 if connected, 0 if disconnected */
+} Client;
+
+Client clients[MAX_THREADS];
+int clients_index_free = 0;
+
+pthread_mutex_t mutex;
+pthread_cond_t roomAvailable, dataAvailable; // room for removeclient, data for addclient
 
 /* Receive routine: use recv to receive from socket and manage
    the fact that recv may return after having read less bytes than
@@ -50,6 +63,9 @@ static void handleConnection(int currSd)
         receive(currSd, command, len);
         command[len] = 0; //to end the command string
         
+        // TODO DEBUGGING
+        print_server(command);
+        
         /* Execute the command and get the answer character string */    
         if(strcmp(command,"help") == 0)
             answer = strdup(
@@ -86,9 +102,47 @@ static void handleConnection(int currSd)
     close(currSd);
 }
 
+/*
+    Add a client to our buffer 'clients'.
+*/
+static void addclient(Client client){
+    
+    // take the semaphore to write on 'clients' buffer
+    pthread_mutex_lock(&mutex);
+    
+    // WAIT till 'clients' is full
+    while(clients_index_free == MAX_THREADS - 1){
+        print_server_error("Max capacity reached. Waiting for space...\n");
+        pthread_cond_wait(&roomAvailable, &mutex);
+    }
+    
+    int index = clients_index_free;
+    clients[index].active = 1;
+    // since 'retSin.sin_addr' has the client id (in binary form)...
+    clients[index].port = client.port;
+    clients[index].socket_fd = client.socket_fd;
 
-/* Thread routine. It calls routine handleConnection()
-   defined in the previous program. */
+    strncpy(clients[index].ip, client.ip, sizeof(clients[index].ip) - 1);
+    clients[index].ip[sizeof(clients[index].ip) - 1] = '\0';
+
+    if(pthread_create(&clients[index], NULL, connectionHandler, &clients[index]) == -1){
+        print_server_error("pthread_create failed");
+        clients[index].active = 0;
+        pthread_mutex_unlock(&mutex);
+        return;
+    }
+
+    clients_index_free++;
+    pthread_cond_signal(&dataAvailable);
+
+    pthread_mutex_unlock(&mutex);
+}
+
+
+
+static void rmvclient(){}
+
+/* Thread routine. It calls routine handleConnection() */
 static void *connectionHandler(void *arg)
 {
     int currSock = *(int *)arg;
@@ -99,13 +153,14 @@ static void *connectionHandler(void *arg)
 }
 
 
+
 int main(int argc, char *argv[]){
     int sock, port;
     int *currSock;
-    int nclients = 5;
     int sAddrLen;
     struct sockaddr_in sin, retSin;
-    pthread_t clients[MAX_THREADS];
+
+    pthread_t threads[MAX_THREADS];
 
     if(argc < 2){
         print_server_error("[SERVER] ERROR not enough arguments: specify PORT");
@@ -141,7 +196,7 @@ int main(int argc, char *argv[]){
     }
 
     // TODO LISTEN how many clients?
-    if(listen(sock, nclients) == -1){
+    if(listen(sock, MAX_THREADS) == -1){
         print_server_error("LISTEN failed");
         exit(-1);
     }
@@ -158,13 +213,18 @@ int main(int argc, char *argv[]){
             // exit(-1);
         }
 
+        // initialize client structure
+        Client client;
+        client.active = 1;
         // since 'retSin.sin_addr' has the client id (in binary form)...
-        char s[100];
-        printf("[SERVER] Connection established with client %s:%d\n", 
-                    inet_ntoa(retSin.sin_addr), 
-                    ntohs(retSin.sin_port));
+        client.port = ntohs(retSin.sin_port);
+        client.socket_fd = *currSock;
+        client.thread_id = i;
+        // convert IPv4 and IPv6 addresses from binary to text form
+        inet_ntop(AF_INET, &retSin.sin_addr, client.ip, sizeof(client.ip));
 
-        print_server(s);
+        
+        addclient(client);
         pthread_create(&clients[i], NULL, connectionHandler, currSock);
     }
 
