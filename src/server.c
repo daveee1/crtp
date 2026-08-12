@@ -127,27 +127,28 @@ static void handleConnection(int currSd)
 static void rmvclient(Client *client){
     pthread_mutex_lock(&mutex);
 
-    int index = client->position;
+    Client *c = &clients[client->position];
+
     /* 1. Close the socket connection */
-    if (clients[index].socket_fd >= 0) {
+    if (c->socket_fd >= 0) {
         char s[70];
         snprintf(s, sizeof(s),
                 "Connection terminated: cl->%s, port->%d",
                 client->ip,
                 client->port);
         print_server(s);
-        close(clients[index].socket_fd);
-        clients[index].socket_fd = -1;
+        close(c->socket_fd);
+        c->socket_fd = -1;
     }
 
     /* 2. Free dynamically allocated memory */
-    if (clients[index].tasks != NULL) {
-        free(clients[index].tasks);
-        clients[index].tasks = NULL;
+    if (c->tasks != NULL) {
+        free(c->tasks);
+        c->tasks = NULL;
     }
 
     /* 3. Mark the slot as inactive */
-    clients[index].active = 0;
+    c->active = 0;
 
     pthread_cond_signal(&roomAvailable);
     pthread_mutex_unlock(&mutex);
@@ -236,6 +237,59 @@ static void addclient(int current_socket, struct sockaddr_in *retSin)
     print_client(s);
 }
 
+void closing_broadcast_to_clients(){
+    pthread_mutex_lock(&mutex);
+    const char *shutdown_msg = "SERVER_SHUTDOWN: The server is shutting down now. Goodbye!\n";
+    int msg_len = strlen(shutdown_msg);
+
+    char *s = "SERVER_SHUTDOWN: beginning\n";
+    print_server(s);
+
+    for(int i = 0; i < MAX_THREADS; i++){
+        printf("INSIDE\n");
+        Client *current_client = &clients[i];
+        printf("current client pos in buffer: %d, active %d\n", i, current_client->active);
+        if(current_client->active == 0)
+            continue;
+        if(current_client->active == 1){
+            send(current_client->socket_fd, shutdown_msg, msg_len, 0);
+            rmvclient(current_client);
+        }
+    }
+
+    s = "SERVER_SHUTDOWN: end\n";
+    print_server(s);
+    pthread_mutex_unlock(&mutex);
+}
+
+int closing_server(int sock){
+    close(sock);
+}
+
+void init_client(Client *c){
+    c->active = 0;
+    c->port = 0;
+    c->position = 0;
+    c->ip[0] = '\0';
+    c->ntasks = 0;
+    c->satisfied = 0;
+    c->socket_fd = -1;
+    c->tasks = NULL;
+    c->thread_id = 0;
+}
+
+void init_clients_buffer(){
+    pthread_mutex_lock(&mutex);
+    for(int i = 0; i < MAX_THREADS; i++)
+        init_client(&clients[i]);
+    
+    pthread_mutex_unlock(&mutex);
+
+}
+
+
+
+
 int main(int argc, char *argv[]){
     int server_socket, server_port;
     int *currSock;
@@ -277,14 +331,14 @@ int main(int argc, char *argv[]){
         exit(-1);
     }
 
-    // TODO LISTEN how many clients?
+    // listen and accept MAX_THREADS clients
     if(listen(server_socket, MAX_THREADS) == -1){
         print_server_error("LISTEN failed");
         exit(-1);
     }
 
     sAddrLen = sizeof(retSin);
-
+    init_clients_buffer();
 
     while(!close_server)
     {
@@ -323,6 +377,14 @@ int main(int argc, char *argv[]){
         }
     }
 
+    // close each client still connected to the server
+    closing_broadcast_to_clients();
+    closing_server(server_socket);
+
+    // Destroy mutexes and condition variables
+    pthread_mutex_destroy(&mutex);
+    pthread_cond_destroy(&roomAvailable);
+    // close server
     print_server("CLOSING cleanly");
 
     return 0;

@@ -107,7 +107,7 @@ int main(int argc, char **argv)
         and then the answer itself */
         if(receive(sd, (char *)&netLen, sizeof(netLen)))
         {
-            print_client_error("ERROR recv");
+            print_client_error("ERROR recv number of characters");
             exit(0);
         }
         
@@ -117,7 +117,7 @@ int main(int argc, char **argv)
         answer = malloc(len + 1);
         if(receive(sd, answer, len))
         {
-            print_client_error("ERROR recv");
+            print_client_error("ERROR recv answer");
             exit(1);
         }
         answer[len] = 0;
