@@ -14,11 +14,20 @@ typedef struct {
     int active;               /* 1 if connected, 0 if disconnected */
 } Client;
 
+// our clients's buffer
 Client clients[MAX_THREADS];
-int free_position = 0;
 
-pthread_mutex_t mutex;
-pthread_cond_t roomAvailable, dataAvailable; // SEMAPHOREES: roomAvailable when there is space in the buffer, dataAvailable when buffer has clients already in it
+
+// SEMAPHOREES
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutexstopserver = PTHREAD_MUTEX_INITIALIZER;
+// roomAvailable when there is space in the buffer, dataAvailable when buffer has clients already in it
+pthread_cond_t roomAvailable = PTHREAD_COND_INITIALIZER;
+pthread_cond_t dataAvailable = PTHREAD_COND_INITIALIZER;
+
+// if a client wants to close the server
+int close_server = 0;
+
 
 /* Receive routine: use recv to receive from socket and manage
    the fact that recv may return after having read less bytes than
@@ -50,7 +59,6 @@ static void handleConnection(int currSd)
 {
     unsigned int netLen;
     int len;
-    int exit_status = 0;
     char *command, *answer;
     
     while(1)
@@ -64,7 +72,10 @@ static void handleConnection(int currSd)
         command = malloc(len+1);
 
         /* Get the command and write terminator */
-        receive(currSd, command, len);
+        if (receive(currSd, command, len) == -1) {
+            free(command);
+            break;
+        }
         command[len] = 0; //to end the command string
         
         // TODO DEBUGGING
@@ -80,8 +91,10 @@ static void handleConnection(int currSd)
                 "       stop: force stop server connection\n"
                 );
         else if (strcmp(command,"stop") == 0) {
+            pthread_mutex_lock(&mutexstopserver);
             answer = strdup("closing server connection");
-            exit_status = 1;
+            close_server = 1;
+            pthread_mutex_unlock(&mutexstopserver);
         }
         else 
             answer = strdup("invalid command (try help).");
@@ -90,13 +103,13 @@ static void handleConnection(int currSd)
         len = strlen(answer);
         netLen = htonl(len);
         
-        /* Send answer character length */
+        /* Send answer character length to client */
         if (send(currSd, &netLen, sizeof(netLen), 0) == -1){
             free(command);
             free(answer);
             break;
         }
-        /* Send answer characters */
+        /* Send answer characters to client*/
         if (send(currSd, answer, len, 0) == -1){
             free(command);
             free(answer);
@@ -105,7 +118,7 @@ static void handleConnection(int currSd)
         
         free(command);
         free(answer);
-        if (exit_status)  
+        if (close_server)  
             break;
     }
     
@@ -122,7 +135,6 @@ static void rmvclient(Client *client){
                 "Connection terminated: cl->%s, port->%d",
                 client->ip,
                 client->port);
-
         print_server(s);
         close(clients[index].socket_fd);
         clients[index].socket_fd = -1;
@@ -136,9 +148,6 @@ static void rmvclient(Client *client){
 
     /* 3. Mark the slot as inactive */
     clients[index].active = 0;
-
-    /* 4. Decrement active count or manage free slots */
-    free_position--;
 
     pthread_cond_signal(&roomAvailable);
     pthread_mutex_unlock(&mutex);
@@ -168,57 +177,67 @@ static int findFreePosition(void) {
 /*
     Add a client to our buffer 'clients'.
 */
-static void addclient(Client *client){
-    
-    // take the semaphore to write on 'clients' buffer
+static void addclient(int current_socket, struct sockaddr_in *retSin)
+{
     pthread_mutex_lock(&mutex);
-    
-    // WAIT till 'clients' is full
-    free_position = findFreePosition();
-    while(free_position == -1){
+
+    int free_position = findFreePosition();
+
+    while (free_position == -1) {
         print_server_error("Max capacity reached. Waiting for space...\n");
         pthread_cond_wait(&roomAvailable, &mutex);
+        free_position = findFreePosition();
     }
-    
-    int free_pos = findFreePosition();
-    clients[free_pos].active = 1;
-    // since 'retSin.sin_addr' has the client id (in binary form)...
-    clients[free_pos].port = client->port;
-    clients[free_pos].socket_fd = client->socket_fd;
-    // TODO clients[free_pos].tasks = (int*) malloc(ntasks*sizeof(int));
-    strncpy(clients[free_pos].ip, client->ip, sizeof(clients[free_pos].ip) - 1);
-    clients[free_pos].ip[sizeof(clients[free_pos].ip) - 1] = '\0';
 
-    if(pthread_create(&clients[free_pos].thread_id, NULL, connectionHandler, &clients[free_pos]) == -1){
-        print_server_error("pthread_create failed");
-        clients[free_pos].active = 0;
-    }
+    /* Initialize client slot */
+    clients[free_position].active = 1;
+    clients[free_position].satisfied = 0;
+    clients[free_position].position = free_position;
+    clients[free_position].socket_fd = current_socket;
+    /* Convert port from network byte order */
+    clients[free_position].port = ntohs(retSin->sin_port);
+
+    /* Convert binary IPv4 address to ASCII string */
+    inet_ntop(
+        AF_INET,
+        &retSin->sin_addr,
+        clients[free_position].ip,
+        sizeof(clients[free_position].ip)
+    );
+
     
     pthread_mutex_unlock(&mutex);
     
-    
-    // debugging
+    /* Create thread for this client */
+    if (pthread_create(
+            &clients[free_position].thread_id,
+            NULL,
+            connectionHandler,
+            &clients[free_position]
+        ) != 0)
+    {
+        print_server_error("pthread_create failed");
+        /* Undo the allocation of this slot */
+        clients[free_position].active = 0;
+        pthread_mutex_unlock(&mutex);
+        return;
+    }
+
+    /* Debugging */
     char s[100];
-    snprintf(s, sizeof(s),
-            "NEW CLIENT: cl->%s, port->%d",
-            client->ip,
-            client->port);
-    print_server(s);
-}
+    snprintf(
+        s,
+        sizeof(s),
+        "NEW CLIENT: cl->%s, port->%d",
+        clients[free_position].ip,
+        clients[free_position].port
+    );
 
-void init_client(Client *client, int current_socket, struct sockaddr_in *retSin) {
-    client->active = 1;
-    client->satisfied = 0;
-    client->position = free_position;
-
-    client->port = ntohs(retSin->sin_port);
-    client->socket_fd = current_socket;
-
-    inet_ntop(AF_INET, &retSin->sin_addr, client->ip, sizeof(client->ip));
+    print_client(s);
 }
 
 int main(int argc, char *argv[]){
-    int sock, port;
+    int server_socket, server_port;
     int *currSock;
     int sAddrLen;
     struct sockaddr_in sin, retSin;
@@ -230,9 +249,9 @@ int main(int argc, char *argv[]){
         exit(-1);
     }
 
-    sscanf(argv[1], "%d", &port);
+    sscanf(argv[1], "%d", &server_port);
     
-    if((sock = socket(AF_INET, SOCK_STREAM, 0)) == -1){
+    if((server_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1){
         print_server_error("socket not correct");
         exit(-1);
     }
@@ -243,23 +262,23 @@ int main(int argc, char *argv[]){
     // then i wait till i receive all the traffic. ALSO even if
     // i close this socket create a new one on this port anyway
     int reuse = 1;
-    if(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0)
+    if(setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0)
         print_server_error("setsockopt(SO_REUSEADDR) failed");
 
     /* Initialize the address (struct sokaddr_in) fields */
     memset(&sin, 0, sizeof(sin));
     sin.sin_family = AF_INET;
     sin.sin_addr.s_addr = INADDR_ANY;
-    sin.sin_port = htons(port);
+    sin.sin_port = htons(server_port);
     
     // BIND socket to the port
-    if(bind(sock, (struct sockaddr *) &sin, sizeof(sin)) == -1){
+    if(bind(server_socket, (struct sockaddr *) &sin, sizeof(sin)) == -1){
         print_server_error("BIND failed");
         exit(-1);
     }
 
     // TODO LISTEN how many clients?
-    if(listen(sock, MAX_THREADS) == -1){
+    if(listen(server_socket, MAX_THREADS) == -1){
         print_server_error("LISTEN failed");
         exit(-1);
     }
@@ -267,22 +286,44 @@ int main(int argc, char *argv[]){
     sAddrLen = sizeof(retSin);
 
 
-    //ACCEPT connections
-    // for(int i = 0; i < MAX_THREADS; i++)
-    
-    while(1)
+    while(!close_server)
     {
-        currSock = (int*) malloc(sizeof(int));
-        if((*currSock = accept(sock, (struct sockaddr *)&retSin, &sAddrLen)) == -1){
-            print_server_error("ACCEPT failed");
-            // exit(-1);
-        }
+        fd_set read_fds;    // necessary for SELECT
+        FD_ZERO(&read_fds);   // set all files to check to zero
+        FD_SET(server_socket, &read_fds);  // add current potential client
+        
+        // timer
+        struct timeval timeout;
+        timeout.tv_sec = 3;
+        timeout.tv_sec = 0;
 
-        // initialize client structure
-        Client client;
-        init_client(&client, *currSock, &retSin);        
-        addclient(&client);
+        // IMP: check if server_socket has a client waiting in the connection queue
+        int activity = select(server_socket + 1, &read_fds, NULL, NULL, &timeout); // server_soc + 1: highest fd + 1
+        if(activity < 0){
+            print_server_error("SELECT error");
+        }
+        // timer out
+        if(activity == 0){
+            continue;   // no new connection has arrived: 
+                        //      SELECT takes out server_socket from read_fds
+        }
+        
+        // activity > 0: new connection established!
+        // NOTE socket readable iff a new client has completed the TCP handshake and is sitting in the connection queue.
+        if(FD_ISSET(server_socket, &read_fds)){
+            
+            int currSock;
+
+            //ACCEPT connections            
+            if((currSock = accept(server_socket, (struct sockaddr *)&retSin, &sAddrLen)) == -1)
+                print_server_error("ACCEPT failed");
+            
+            // add client to the buffer, manage its connection
+            addclient(currSock, &retSin);
+        }
     }
+
+    print_server("CLOSING cleanly");
 
     return 0;
 }

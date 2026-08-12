@@ -9,5 +9,5 @@
 #include <unistd.h>
 #include <pthread.h>
 
-static int receive(int sd, char *retBuf, int size);
+static int receive(int sd, char *retBuf, int size); // static: will be used only by server.c file
 static void handleConnection(int currSd);

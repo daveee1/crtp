@@ -78,7 +78,8 @@ int main(int argc, char **argv)
     {
         /* Get a string command from terminal */
         printf("Enter command: ");
-        scanf("%s", command);
+        if(!scanf("%s", command))
+            print_client_error("SCANF ERROR sending request");
         if(!strcmp(command, "quit")) break;
         
         /* Send first the number of characters in the command and then

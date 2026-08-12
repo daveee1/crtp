@@ -2,6 +2,9 @@
 #define UTILS_H    /* 2. OK, define UTILS_H now! */
 
 #include <stdio.h>
+#include <sys/select.h>
+#include <sys/time.h>
+
 
 #define COLOR_RED   "\033[1;31m"
 #define COLOR_BLUE  "\033[1;34m"
@@ -14,5 +17,7 @@ void print_server_error(const char *error);
 void print_client_error(const char *error);
 void print_server(const char *s);
 void print_client(const char *s);
+
+
 
 #endif             /* 3. End of guard */
