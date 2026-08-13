@@ -29,30 +29,6 @@ pthread_cond_t dataAvailable = PTHREAD_COND_INITIALIZER;
 int close_server = 0;
 
 
-/* Receive routine: use recv to receive from socket and manage
-   the fact that recv may return after having read less bytes than
-   the passed buffer size
-   In most cases recv will read ALL requested bytes, and the loop body
-   will be executed once. This is not however guaranteed and must
-   be handled by the user program. The routine returns 0 upon
-   successful completion, -1 otherwise */
-static int receive(int sd, char *retBuf, int size){
-    
-    int totSize, currSize;
-    totSize = 0;
-    
-    while(totSize < size)
-    {
-        currSize = recv(sd, &retBuf[totSize], size - totSize, 0);
-        if(currSize <= 0)
-            /* An error occurred */
-            return -1;
-        totSize += currSize;
-    }
-
-    return 0;
-}
-
 /* Handle an established  connection
    routine receive is listed in the previous example */
 static void handleConnection(int currSd)
@@ -60,6 +36,7 @@ static void handleConnection(int currSd)
     unsigned int netLen;
     int len;
     char *command, *answer;
+    int quit = 0; // close current client
     
     while(1)
     {
@@ -70,15 +47,18 @@ static void handleConnection(int currSd)
         /* Convert from network byte order */
         len = ntohl(netLen);
         command = malloc(len+1);
+        if (!command) {
+            print_server_error("Memory allocation failed for command in handleConnection()");
+            break;
+        }
 
         /* Get the command and write terminator */
         if (receive(currSd, command, len) == -1) {
             free(command);
             break;
         }
-        command[len] = 0; //to end the command string
+        command[len] = '\0'; //to end the command string
         
-        // TODO DEBUGGING
         print_server(command);
         
         /* Execute the command and get the answer character string */    
@@ -92,14 +72,25 @@ static void handleConnection(int currSd)
                 );
         else if (strcmp(command,"stop") == 0) {
             pthread_mutex_lock(&mutexstopserver);
-            answer = strdup("closing server connection");
+            answer = strdup("closing SERVER connection...");
             close_server = 1;
             pthread_mutex_unlock(&mutexstopserver);
         }
+        else if (strcmp(command,"quit") == 0) {
+            answer = strdup("closing CLIENT connection...");
+            quit = 1;
+        }
         else 
             answer = strdup("invalid command (try help).");
+        
             
-        /* Convert to network byte order */
+        if (!answer) {
+            free(command);
+            break;
+        }
+
+
+        /* Send ans to Client */
         len = strlen(answer);
         netLen = htonl(len);
         
@@ -115,33 +106,36 @@ static void handleConnection(int currSd)
             free(answer);
             break;
         }
-        
         free(command);
         free(answer);
-        if (close_server)  
+        
+        
+        /* 5. Trigger Shutdown Broadcast if 'stop' was issued */
+        if (strcmp(command, "stop") == 0) {
+            /* Notify all other clients, close their sockets, and wake select() */
+            close_server = 1;
             break;
+        }
+
+        if (quit) {
+            break;
+        }
     }
     
 }
 
-static void rmvclient(Client *client){
-    pthread_mutex_lock(&mutex);
-
+/* 1. UNLOCKED HELPER: Expects mutex to ALREADY be locked by caller */
+static void rmvclient_unlocked(Client *client) {
     Client *c = &clients[client->position];
 
-    /* 1. Close the socket connection */
+    // close socket, no more connection
     if (c->socket_fd >= 0) {
-        char s[70];
-        snprintf(s, sizeof(s),
-                "Connection terminated: cl->%s, port->%d",
-                client->ip,
-                client->port);
-        print_server(s);
+        shutdown(c->socket_fd, SHUT_RDWR);
         close(c->socket_fd);
         c->socket_fd = -1;
     }
 
-    /* 2. Free dynamically allocated memory */
+    // free dynamically allocated memory
     if (c->tasks != NULL) {
         free(c->tasks);
         c->tasks = NULL;
@@ -149,8 +143,25 @@ static void rmvclient(Client *client){
 
     /* 3. Mark the slot as inactive */
     c->active = 0;
-
     pthread_cond_signal(&roomAvailable);
+    
+    /* Debugging */
+    char s[100];
+    snprintf(
+        s,
+        sizeof(s),
+        "CLOSED CLIENT: cl->%s, port->%d",
+        c->ip,
+        c->port
+    );
+    print_client(s);
+}
+
+
+/* 2. PUBLIC WRAPPER: Locks mutex, calls unlocked helper, unlocks mutex */
+static void rmvclient(Client *client) {
+    pthread_mutex_lock(&mutex);
+    rmvclient_unlocked(client);
     pthread_mutex_unlock(&mutex);
 }
 
@@ -192,7 +203,6 @@ static void addclient(int current_socket, struct sockaddr_in *retSin)
 
     /* Initialize client slot */
     clients[free_position].active = 1;
-    clients[free_position].satisfied = 0;
     clients[free_position].position = free_position;
     clients[free_position].socket_fd = current_socket;
     /* Convert port from network byte order */
@@ -205,9 +215,6 @@ static void addclient(int current_socket, struct sockaddr_in *retSin)
         clients[free_position].ip,
         sizeof(clients[free_position].ip)
     );
-
-    
-    pthread_mutex_unlock(&mutex);
     
     /* Create thread for this client */
     if (pthread_create(
@@ -220,9 +227,10 @@ static void addclient(int current_socket, struct sockaddr_in *retSin)
         print_server_error("pthread_create failed");
         /* Undo the allocation of this slot */
         clients[free_position].active = 0;
-        pthread_mutex_unlock(&mutex);
         return;
     }
+
+    pthread_mutex_unlock(&mutex);
 
     /* Debugging */
     char s[100];
@@ -233,32 +241,36 @@ static void addclient(int current_socket, struct sockaddr_in *retSin)
         clients[free_position].ip,
         clients[free_position].port
     );
-
     print_client(s);
 }
 
-void closing_broadcast_to_clients(){
+static void closing_broadcast_to_clients(){
     pthread_mutex_lock(&mutex);
-    const char *shutdown_msg = "SERVER_SHUTDOWN: The server is shutting down now. Goodbye!\n";
+    
+    const char *shutdown_msg = "SERVER_SHUTDOWN";
     int msg_len = strlen(shutdown_msg);
 
-    char *s = "SERVER_SHUTDOWN: beginning\n";
-    print_server(s);
+    print_server("SERVER_SHUTDOWN: activated\n");
 
     for(int i = 0; i < MAX_THREADS; i++){
-        printf("INSIDE\n");
         Client *current_client = &clients[i];
-        printf("current client pos in buffer: %d, active %d\n", i, current_client->active);
+
         if(current_client->active == 0)
             continue;
+
         if(current_client->active == 1){
-            send(current_client->socket_fd, shutdown_msg, msg_len, 0);
-            rmvclient(current_client);
+            unsigned int netLen = htonl(msg_len);
+            if(send(current_client->socket_fd, &netLen, sizeof(netLen), 0) == -1){
+                print_server_error(" SEND in closing_broadcast (number of chars)");
+            }
+            if(send(current_client->socket_fd, shutdown_msg, msg_len, 0) == -1){
+                print_server_error(" SEND in closing_broadcast (ans)");
+            }
+            rmvclient_unlocked(current_client);
         }
     }
 
-    s = "SERVER_SHUTDOWN: end\n";
-    print_server(s);
+    print_server("SERVER_SHUTDOWN: end");
     pthread_mutex_unlock(&mutex);
 }
 
@@ -280,11 +292,11 @@ void init_client(Client *c){
 
 void init_clients_buffer(){
     pthread_mutex_lock(&mutex);
+    print_server("init CLIENTS BUFFER");
     for(int i = 0; i < MAX_THREADS; i++)
         init_client(&clients[i]);
     
     pthread_mutex_unlock(&mutex);
-
 }
 
 
@@ -343,8 +355,8 @@ int main(int argc, char *argv[]){
     while(!close_server)
     {
         fd_set read_fds;    // necessary for SELECT
-        FD_ZERO(&read_fds);   // set all files to check to zero
-        FD_SET(server_socket, &read_fds);  // add current potential client
+        FD_ZERO(&read_fds);   // as theory says...
+        FD_SET(server_socket, &read_fds);  // keep checking server_socket
         
         // timer
         struct timeval timeout;
@@ -354,10 +366,20 @@ int main(int argc, char *argv[]){
         // IMP: check if server_socket has a client waiting in the connection queue
         int activity = select(server_socket + 1, &read_fds, NULL, NULL, &timeout); // server_soc + 1: highest fd + 1
         if(activity < 0){
-            print_server_error("SELECT error");
+            /* If select was interrupted by a signal, don't crash — just retry */
+            if (errno == EINTR) {
+                continue;
+            }
+
+            /* Print the EXACT system error using strerror(errno) */
+            char err_buf[128];
+            snprintf(err_buf, sizeof(err_buf), "SELECT error: %s", strerror(errno));
+            print_server_error(err_buf);
+            break; // Exit loop cleanly instead of immediate exit(1)
         }
+
         // timer out
-        if(activity == 0){
+        else if(activity == 0){
             continue;   // no new connection has arrived: 
                         //      SELECT takes out server_socket from read_fds
         }
@@ -365,6 +387,7 @@ int main(int argc, char *argv[]){
         // activity > 0: new connection established!
         // NOTE socket readable iff a new client has completed the TCP handshake and is sitting in the connection queue.
         if(FD_ISSET(server_socket, &read_fds)){
+            // SUMMARY add a client only if server_socket notes that a client wants to connect!
             
             int currSock;
 
@@ -384,6 +407,7 @@ int main(int argc, char *argv[]){
     // Destroy mutexes and condition variables
     pthread_mutex_destroy(&mutex);
     pthread_cond_destroy(&roomAvailable);
+
     // close server
     print_server("CLOSING cleanly");
 

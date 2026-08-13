@@ -4,6 +4,9 @@
 #include <stdio.h>
 #include <sys/select.h>
 #include <sys/time.h>
+#include <sys/socket.h>   /* Provides recv(), send(), socket(), accept() */
+#include <netinet/in.h>   /* Provides struct sockaddr_in, htons(), ntohs() */
+#include <arpa/inet.h>    /* Provides inet_ntop(), inet_pton() */
 
 
 #define COLOR_RED   "\033[1;31m"
@@ -17,6 +20,7 @@ void print_server_error(const char *error);
 void print_client_error(const char *error);
 void print_server(const char *s);
 void print_client(const char *s);
+int receive(int sd, char *retBuf, int size);
 
 
 

@@ -1,7 +1,10 @@
 TODO 
-    tasks
-    what is netLEn
-    error SELECT after i create a server previously
+    
+    SERVER
+        tasks
+        what is netLEn
+        error SELECT after i create a server previously
+        reuse
 
-    init_clients_buffer
-    init_client
+    CLIENT
+        [CLIENT ERROR] Failed to receive full message from server.

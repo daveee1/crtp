@@ -3,21 +3,40 @@
 #define FALSE 0
 #define TRUE 1
 
-static int receive(int sd, char *retBuf, int size){
+/*
+    Return -1 if : error in receive or server's ans = 'SERVER_SHUTDOWN'
+    Return 1 if: otherwise
+    */
+static int handle_server_answer(int socket){
+    unsigned int netLen;
+    int len;
     
-    int totSize, currSize;
-    totSize = 0;
-    
-    while(totSize < size)
-    {
-        currSize = recv(sd, &retBuf[totSize], size - totSize, 0);
-        if(currSize <= 0)
-            /* An error occurred */
-            return -1;
-        totSize += currSize;
+    /* 1. Receive message length */
+    if (receive(socket, (char *)&netLen, sizeof(netLen)) < 0) {
+        print_client("Server closed connection");
+        return -1; /* Connection lost */
     }
 
-    return 0;
+    len = ntohl(netLen);
+    char *answer = malloc(len + 1);
+    if (!answer) return -1;
+
+    /* 2. Receive message text */
+    if (receive(socket, answer, len) < 0) {
+        free(answer);
+        print_client_error("Failed to receive full message from server.");
+        return -1;
+    }
+    answer[len] = '\0';
+    print_client(answer);
+
+    if(!strcmp(answer, "SERVER_SHUTDOWN")){
+        free(answer);
+        return -1;
+    }
+    
+    free(answer);
+    return 1; // server sent other information
 }
 
 /* Main client program. The IP address and the port number of
@@ -30,9 +49,8 @@ int main(int argc, char **argv)
     char hostname[100];
     char command[256];
     char *answer;
-    int  sd;
+    int  client_socket;
     int port;
-    int stopped = FALSE;
     int len;
     unsigned int netLen;
     struct sockaddr_in sin;
@@ -61,71 +79,75 @@ int main(int argc, char **argv)
     sin.sin_port = htons(port);
     
     /* create a new socket */
-    if ((sd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+    if ((client_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1)
     {
         print_client_error("ERROR socket");
         exit(1);
     }
+    
     /* connect the socket to the port and host
     specified in struct sockaddr_in */
-    if (connect(sd,(struct sockaddr *)&sin, sizeof(sin)) == -1)
+    if (connect(client_socket,(struct sockaddr *)&sin, sizeof(sin)) == -1)
     {
         print_client_error("ERROR connect");
         exit(1);
     }
 
-    while(!stopped)
+    while(1)
     {
-        /* Get a string command from terminal */
-        printf("Enter command: ");
-        if(!scanf("%s", command))
-            print_client_error("SCANF ERROR sending request");
-        if(!strcmp(command, "quit")) break;
+        fd_set read_fds;
+        FD_ZERO(&read_fds);
         
-        /* Send first the number of characters in the command and then
-        the command itself */
-        len = strlen(command);
-        
-        /* Convert the integer number into network byte order */
-        netLen = htonl(len);
+        FD_SET(STDIN_FILENO, &read_fds);  // if keyboard detects input by user
+        FD_SET(client_socket, &read_fds);
 
-        /* Send number of characters */
-        if(send(sd, &netLen, sizeof(netLen), 0) == -1)
-        {
-            print_client_error("ERROR send number of characters");
+        fflush(stdout); /* Force prompt to display without waiting for newline */
+        
+        int max_fd = (client_socket > STDIN_FILENO) ? client_socket : STDIN_FILENO;
+        int activity = select(max_fd + 1, &read_fds, NULL, NULL, NULL);
+        if(activity < 0){
+            print_client_error("SELECT error");
             exit(1);
+            print_client("Enter command: ");
         }
         
-        /* Send the command */
-        if (send(sd, command, len, 0) == -1)
-        {
-            print_client_error("ERROR send command");
-            exit(0);
+
+
+
+        //1) activity detected: server answered! or...
+        if(FD_ISSET(client_socket, &read_fds)){
+            if(handle_server_answer(client_socket) < 0)
+                break;
+            print_client("enter command");
+            fflush(stdout);
         }
-        
-        /* Receive the answer: first the number of characters
-        and then the answer itself */
-        if(receive(sd, (char *)&netLen, sizeof(netLen)))
-        {
-            print_client_error("ERROR recv number of characters");
-            exit(0);
+
+        //2) input by user detected
+        if(FD_ISSET(STDIN_FILENO, &read_fds) > 0){
+            char command[80];
+            if(scanf("%s", command) < 0){
+                print_client_error("scanf error in STDIN_FILENO");
+                break;
+            }
+
+            // send command lenght
+            int len = strlen(command);
+            unsigned int netLen = htonl(len);
+
+            if(send(client_socket, &netLen, sizeof(netLen), 0) < 0){
+                print_client_error("SENDing request # of chars to server");
+                break;
+            }
+            if(send(client_socket, &command, len, 0) < 0){
+                print_client_error("SENDing command to server");
+                break;
+            }
+
+            // TODO handle ans based on tasks
         }
-        
-        /* Convert from Network byte order */
-        len = ntohl(netLen);
-        /* Allocate and receive the answer */
-        answer = malloc(len + 1);
-        if(receive(sd, answer, len))
-        {
-            print_client_error("ERROR recv answer");
-            exit(1);
-        }
-        answer[len] = 0;
-        printf("%s\n", answer);
-        free(answer);
-        if(!strcmp(command, "stop")) break;
+
     }
     /* Close the socket */
-    close(sd);
+    close(client_socket);
     return 0;
 }

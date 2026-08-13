@@ -8,6 +8,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <errno.h> 
 
-static int receive(int sd, char *retBuf, int size); // static: will be used only by server.c file
 static void handleConnection(int currSd);
