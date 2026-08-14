@@ -16,7 +16,7 @@ typedef struct {
 
 // our clients's buffer
 Client clients[MAX_THREADS];
-
+ 
 
 // SEMAPHOREES
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -27,6 +27,30 @@ pthread_cond_t dataAvailable = PTHREAD_COND_INITIALIZER;
 
 // if a client wants to close the server
 int close_server = 0;
+
+
+
+
+/* Command Enum Definition to help with tasks activation*/
+typedef enum {
+    CMD_HELP,
+    CMD_STOP,
+    CMD_QUIT,
+    CMD_ACTIVATE,
+    CMD_DEACTIVATE,
+    CMD_UNKNOWN
+} CommandType;
+
+/* Helper function to map command strings to enum values */
+static CommandType parse_command(const char *cmd) {
+    if (!strcmp(cmd, "help")) return CMD_HELP;
+    if (!strcmp(cmd, "stop")) return CMD_STOP;
+    if (!strcmp(cmd, "quit")) return CMD_QUIT;
+    if (!strncmp(cmd, "ACTIVATE", 8)) return CMD_ACTIVATE;
+    if (!strncmp(cmd, "DEACTIVATE", 10) ) return CMD_DEACTIVATE;
+    return CMD_UNKNOWN;
+}
+
 
 
 /* Handle an established  connection
@@ -61,36 +85,47 @@ static void handleConnection(int currSd)
         
         print_server(command);
         
-        /* Execute the command and get the answer character string */    
-        if(strcmp(command,"help") == 0)
-            answer = strdup(
-                "server is active.\n\n"
-                "    commands:\n"
-                "       help: print this help\n"
-                "       quit: stop client connection\n"
-                "       stop: force stop server connection\n"
+        /* Execute the command using switch */
+        CommandType cmd_type = parse_command(command);
+
+        switch (cmd_type) {
+            case CMD_HELP:
+                answer = strdup(    // NOTE strdup = malloc + strcpy -> must be checked for malloc failures!
+                    "server is active.\n\n"
+                    "    commands:\n"
+                    "       help: print this help\n"
+                    "       quit: stop client connection\n"
+                    "       stop: force stop server connection\n"
                 );
-        else if (strcmp(command,"stop") == 0) {
-            pthread_mutex_lock(&mutexstopserver);
-            answer = strdup("closing SERVER connection...");
-            close_server = 1;
-            pthread_mutex_unlock(&mutexstopserver);
+                break;
+
+            case CMD_STOP:
+                pthread_mutex_lock(&mutexstopserver);
+                answer = strdup("closing SERVER connection...");
+                close_server = 1;
+                pthread_mutex_unlock(&mutexstopserver);
+                break;
+
+            case CMD_QUIT:
+                answer = strdup("closing CLIENT connection...");
+                quit = 1;
+                break;
+
+            case CMD_UNKNOWN:
+            default:
+                answer = strdup("invalid command (try help).");
+                break;
         }
-        else if (strcmp(command,"quit") == 0) {
-            answer = strdup("closing CLIENT connection...");
-            quit = 1;
-        }
-        else 
-            answer = strdup("invalid command (try help).");
         
             
         if (!answer) {
+            print_server_error("Memory allocation failed in strdup");
             free(command);
             break;
         }
 
 
-        /* Send ans to Client */
+        /* we must send 'ans' to Client */
         len = strlen(answer);
         netLen = htonl(len);
         
@@ -111,13 +146,9 @@ static void handleConnection(int currSd)
         
         
         /* 5. Trigger Shutdown Broadcast if 'stop' was issued */
-        if (strcmp(command, "stop") == 0) {
-            /* Notify all other clients, close their sockets, and wake select() */
-            close_server = 1;
-            break;
-        }
-
-        if (quit) {
+        if (close_server || quit) {
+            /*'close_server': Notify all other clients, close their sockets, and wake select() */
+            /*'quit': close client*/
             break;
         }
     }

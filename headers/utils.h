@@ -16,10 +16,19 @@
 #define COLOR_ORANGE     "\033[38;5;208m" /* 256-color Extended ANSI Orange */
 #define COLOR_RESET "\033[0m"
 
+// #define COLOR_LIGHT_GREEN  "\033[1;32m" 
+#define COLOR_YELLOW "\033[1;33m" 
+
+
 void print_server_error(const char *error);
-void print_client_error(const char *error);
 void print_server(const char *s);
+void print_server_warning(const char *s);
+
+void print_client_error(const char *error);
 void print_client(const char *s);
+void print_client_warning(const char *s);
+
+
 int receive(int sd, char *retBuf, int size);
 
 

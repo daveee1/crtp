@@ -118,7 +118,7 @@ int main(int argc, char **argv)
         if(FD_ISSET(client_socket, &read_fds)){
             if(handle_server_answer(client_socket) < 0)
                 break;
-            print_client("enter command");
+            print_client("enter command: request task {1-4}");
             fflush(stdout);
         }
 
@@ -130,10 +130,16 @@ int main(int argc, char **argv)
                 break;
             }
 
+            if(strcmp(command, "1") && strcmp(command, "2") && strcmp(command, "3") && strcmp(command, "4") && strcmp(command, "quit") 
+                && strcmp(command, "stop") && strcmp(command, "help")){
+                print_client_warning("enter a number from 1 to 4!");
+                continue;
+            }
+            
             // send command lenght
             int len = strlen(command);
             unsigned int netLen = htonl(len);
-
+            // if command = {1-4} then send the request!
             if(send(client_socket, &netLen, sizeof(netLen), 0) < 0){
                 print_client_error("SENDing request # of chars to server");
                 break;
