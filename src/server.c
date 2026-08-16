@@ -6,7 +6,6 @@ typedef struct {
     int socket_fd;
     int position; // id in the buffer
     int satisfied;  // were all its tasks managed? 1 yes, 0 no
-    int *tasks; // which tasks is going to request
     int ntasks;
     char ip[16];
     int port;
@@ -16,7 +15,6 @@ typedef struct {
 
 // our clients's buffer
 Client clients[MAX_THREADS];
- 
 
 // SEMAPHOREES
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -24,6 +22,12 @@ pthread_mutex_t mutexstopserver = PTHREAD_MUTEX_INITIALIZER;
 // roomAvailable when there is space in the buffer, dataAvailable when buffer has clients already in it
 pthread_cond_t roomAvailable = PTHREAD_COND_INITIALIZER;
 pthread_cond_t dataAvailable = PTHREAD_COND_INITIALIZER;
+// for tasks
+pthread_mutex_t mutex_task_1 = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_task_2 = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_task_3 = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_task_4 = PTHREAD_MUTEX_INITIALIZER;
+
 
 // if a client wants to close the server
 int close_server = 0;
@@ -44,11 +48,23 @@ typedef enum {
 /* Helper function to map command strings to enum values */
 static CommandType parse_command(const char *cmd) {
     if (!strcmp(cmd, "help")) return CMD_HELP;
-    if (!strcmp(cmd, "stop")) return CMD_STOP;
-    if (!strcmp(cmd, "quit")) return CMD_QUIT;
-    if (!strncmp(cmd, "ACTIVATE", 8)) return CMD_ACTIVATE;
-    if (!strncmp(cmd, "DEACTIVATE", 10) ) return CMD_DEACTIVATE;
+    else if (!strcmp(cmd, "stop")) return CMD_STOP;
+    else if (!strcmp(cmd, "quit")) return CMD_QUIT;
+    else if (strstr(cmd, "ACTIVATE") != NULL) return CMD_ACTIVATE;
+    else if (strstr(cmd, "DEACTIVATE") != NULL ) return CMD_DEACTIVATE;
     return CMD_UNKNOWN;
+}
+
+
+// get task's number out of command
+static int parse_task_number(const char *command) {
+    int task_num = -1;
+    // Tries to read "ACTIVATE <number>"
+    if (sscanf(command, "ACTIVATE %d", &task_num) == 1) 
+        return task_num;
+    else if (sscanf(command, "DEACTIVATE %d", &task_num) == 1) 
+        return task_num;
+    return -1; // Return -1 if parsing failed
 }
 
 
@@ -61,13 +77,17 @@ static void handleConnection(int currSd)
     int len;
     char *command, *answer;
     int quit = 0; // close current client
+    int task_number = -1;
     
     while(1)
     {
         /* Get the command string length
         If receive fails, the client most likely exited */
-        if(receive(currSd, (char *)&netLen, sizeof(netLen))) break;
-        
+        if(receive(currSd, (char *)&netLen, sizeof(netLen))){
+            perror("[SERVER] receive failed before command"); // <--- ADD THIS
+            printf("currSd value was: %d\n", currSd);         // <--- AND THIS
+            break;
+        } 
         /* Convert from network byte order */
         len = ntohl(netLen);
         command = malloc(len+1);
@@ -76,7 +96,7 @@ static void handleConnection(int currSd)
             break;
         }
 
-        /* Get the command and write terminator */
+        /* Get the command */
         if (receive(currSd, command, len) == -1) {
             free(command);
             break;
@@ -111,11 +131,48 @@ static void handleConnection(int currSd)
                 quit = 1;
                 break;
 
+            case CMD_ACTIVATE:
+                // task_number = parse_task_number(command);
+                // if(task_number == -1)
+                //     print_server_error("ACTIVATE no number detected in the client command");
+                
+                // pthread_mutex_t *mutex_task;
+                // switch(task_number){
+                //     case 1:
+                        // mutex_task = &mutex_task_1;
+                        // break;
+                //     case 2:
+                //         mutex_task = &mutex_task_2;
+                        // break;
+                //     case 3:
+                //         mutex_task = &mutex_task_3;
+                        // break;
+                //     case 4:
+                //         mutex_task = &mutex_task_4;
+                        // break;
+                // }
+                
+                // activate();
+                answer = strdup("task ACTIVATED");
+                break;
+            
+            case CMD_DEACTIVATE:
+                // task_number = parse_task_number(command);
+                // if(task_number == -1){
+                    // print_server_error("DEACTIVATE no number detected in the client command");
+                    // exit(1);
+                // }
+                // deactivate();
+                answer = strdup("task DEACTIVATED");
+                break;
+            
             case CMD_UNKNOWN:
             default:
                 answer = strdup("invalid command (try help).");
                 break;
+                
         }
+        printf("handle connection after cmd\n");
         
             
         if (!answer) {
@@ -141,6 +198,7 @@ static void handleConnection(int currSd)
             free(answer);
             break;
         }
+        printf("handle connection after send\n");
         free(command);
         free(answer);
         
@@ -157,23 +215,16 @@ static void handleConnection(int currSd)
 
 /* 1. UNLOCKED HELPER: Expects mutex to ALREADY be locked by caller */
 static void rmvclient_unlocked(Client *client) {
-    Client *c = &clients[client->position];
-
     // close socket, no more connection
-    if (c->socket_fd >= 0) {
-        shutdown(c->socket_fd, SHUT_RDWR);
-        close(c->socket_fd);
-        c->socket_fd = -1;
+    if (client->socket_fd >= 0) {
+        shutdown(client->socket_fd, SHUT_RDWR);
+        close(client->socket_fd);
+        client->socket_fd = -1;
     }
-
-    // free dynamically allocated memory
-    if (c->tasks != NULL) {
-        free(c->tasks);
-        c->tasks = NULL;
-    }
+    printf("closed socket\n");
 
     /* 3. Mark the slot as inactive */
-    c->active = 0;
+    client->active = 0;
     pthread_cond_signal(&roomAvailable);
     
     /* Debugging */
@@ -182,8 +233,8 @@ static void rmvclient_unlocked(Client *client) {
         s,
         sizeof(s),
         "CLOSED CLIENT: cl->%s, port->%d",
-        c->ip,
-        c->port
+        client->ip,
+        client->port
     );
     print_client(s);
 }
@@ -202,7 +253,9 @@ static void *connectionHandler(void *client)
 {
     Client *c = (Client*)client; // make it a 'Client' object
     handleConnection(c->socket_fd);
+
     rmvclient(c);
+
     return NULL;
 }
 
@@ -233,31 +286,33 @@ static void addclient(int current_socket, struct sockaddr_in *retSin)
     }
 
     /* Initialize client slot */
-    clients[free_position].active = 1;
-    clients[free_position].position = free_position;
-    clients[free_position].socket_fd = current_socket;
+    Client *client = &clients[free_position];
+    client->active = 1;
+    client->position = free_position;
+    client->socket_fd = current_socket;
     /* Convert port from network byte order */
-    clients[free_position].port = ntohs(retSin->sin_port);
+    client->port = ntohs(retSin->sin_port);
 
+    printf("current socket: %d", client->socket_fd);
     /* Convert binary IPv4 address to ASCII string */
     inet_ntop(
         AF_INET,
         &retSin->sin_addr,
-        clients[free_position].ip,
-        sizeof(clients[free_position].ip)
+        client->ip,
+        sizeof(client->ip)
     );
     
     /* Create thread for this client */
     if (pthread_create(
-            &clients[free_position].thread_id,
+            &client->thread_id,
             NULL,
             connectionHandler,
-            &clients[free_position]
+            client
         ) != 0)
     {
         print_server_error("pthread_create failed");
         /* Undo the allocation of this slot */
-        clients[free_position].active = 0;
+        client->active = 0;
         return;
     }
 
@@ -269,8 +324,8 @@ static void addclient(int current_socket, struct sockaddr_in *retSin)
         s,
         sizeof(s),
         "NEW CLIENT: cl->%s, port->%d",
-        clients[free_position].ip,
-        clients[free_position].port
+        client->ip,
+        client->port
     );
     print_client(s);
 }
@@ -305,11 +360,11 @@ static void closing_broadcast_to_clients(){
     pthread_mutex_unlock(&mutex);
 }
 
-int closing_server(int sock){
+static int closing_server(int sock){
     close(sock);
 }
 
-void init_client(Client *c){
+static void init_client(Client *c){
     c->active = 0;
     c->port = 0;
     c->position = 0;
@@ -317,11 +372,10 @@ void init_client(Client *c){
     c->ntasks = 0;
     c->satisfied = 0;
     c->socket_fd = -1;
-    c->tasks = NULL;
     c->thread_id = 0;
 }
 
-void init_clients_buffer(){
+static void init_clients_buffer(){
     pthread_mutex_lock(&mutex);
     print_server("init CLIENTS BUFFER");
     for(int i = 0; i < MAX_THREADS; i++)
@@ -427,6 +481,7 @@ int main(int argc, char *argv[]){
                 print_server_error("ACCEPT failed");
             
             // add client to the buffer, manage its connection
+            printf("add client\n");
             addclient(currSock, &retSin);
         }
     }

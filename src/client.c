@@ -39,6 +39,60 @@ static int handle_server_answer(int socket){
     return 1; // server sent other information
 }
 
+
+
+typedef enum {
+    CLIENT_CMD_ACTIVATE_TASK1,
+    CLIENT_CMD_ACTIVATE_TASK2,
+    CLIENT_CMD_ACTIVATE_TASK3,
+    CLIENT_CMD_ACTIVATE_TASK4,
+    CLIENT_CMD_DEACTIVATE_TASK1,
+    CLIENT_CMD_DEACTIVATE_TASK2,
+    CLIENT_CMD_DEACTIVATE_TASK3,
+    CLIENT_CMD_DEACTIVATE_TASK4,
+    CLIENT_CMD_HELP,
+    CLIENT_CMD_QUIT,
+    CLIENT_CMD_STOP,
+    CLIENT_CMD_INVALID
+} ClientCmdType;
+
+/* Parse raw user input into an enum */
+static ClientCmdType parse_user_input(const char *input) {
+    if ( !strcmp(input, "act 1") || !strcmp(input, "activate 1")) return CLIENT_CMD_ACTIVATE_TASK1;
+    else if (!strcmp(input, "act 2") || !strcmp(input, "activate 2")) return CLIENT_CMD_ACTIVATE_TASK2;
+    else if (!strcmp(input, "act 3") || !strcmp(input, "activate 3")) return CLIENT_CMD_ACTIVATE_TASK3;
+    else if (!strcmp(input, "act 4") || !strcmp(input, "activate 4")) return CLIENT_CMD_ACTIVATE_TASK4;
+    else if (!strcmp(input, "deactivate 1") || !strcmp(input, "deac 1")) return CLIENT_CMD_DEACTIVATE_TASK1;
+    else if (!strcmp(input, "deactivate 2") || !strcmp(input, "deac 2")) return CLIENT_CMD_DEACTIVATE_TASK2;
+    else if (!strcmp(input, "deactivate 3") || !strcmp(input, "deac 3")) return CLIENT_CMD_DEACTIVATE_TASK3;
+    else if (!strcmp(input, "deactivate 4") || !strcmp(input, "deac 4")) return CLIENT_CMD_DEACTIVATE_TASK4;
+    else if (!strcmp(input, "help")) return CLIENT_CMD_HELP;
+    else if (!strcmp(input, "quit")) return CLIENT_CMD_QUIT;
+    else if (!strcmp(input, "stop")) return CLIENT_CMD_STOP;
+    return CLIENT_CMD_INVALID;
+}
+
+/* Format the payload to send over TCP */
+static const char* format_server_payload(ClientCmdType cmd) {
+    switch (cmd) {
+        case CLIENT_CMD_ACTIVATE_TASK1: return "ACTIVATE 1";
+        case CLIENT_CMD_ACTIVATE_TASK2: return "ACTIVATE 2";
+        case CLIENT_CMD_ACTIVATE_TASK3: return "ACTIVATE 3";
+        case CLIENT_CMD_ACTIVATE_TASK4: return "ACTIVATE 4";
+        case CLIENT_CMD_DEACTIVATE_TASK1: return "DEACTIVATE 1";
+        case CLIENT_CMD_DEACTIVATE_TASK2: return "DEACTIVATE 2";
+        case CLIENT_CMD_DEACTIVATE_TASK3: return "DEACTIVATE 3";
+        case CLIENT_CMD_DEACTIVATE_TASK4: return "DEACTIVATE 4";
+        case CLIENT_CMD_HELP:  return "help";
+        case CLIENT_CMD_QUIT:  return "quit";
+        case CLIENT_CMD_STOP:  return "stop";
+        default:               return NULL;
+    }
+}
+
+
+
+
 /* Main client program. The IP address and the port number of
    the server are passed in the command line. After establishing
    a connection, the program will read commands from the terminal
@@ -108,11 +162,8 @@ int main(int argc, char **argv)
         if(activity < 0){
             print_client_error("SELECT error");
             exit(1);
-            print_client("Enter command: ");
         }
         
-
-
 
         //1) activity detected: server answered! or...
         if(FD_ISSET(client_socket, &read_fds)){
@@ -124,32 +175,38 @@ int main(int argc, char **argv)
 
         //2) input by user detected
         if(FD_ISSET(STDIN_FILENO, &read_fds) > 0){
-            char command[80];
-            if(scanf("%s", command) < 0){
-                print_client_error("scanf error in STDIN_FILENO");
-                break;
+            printf("> ");
+            
+            char input[50];
+            if (fgets(input, sizeof(input), stdin) == NULL){
+                print_client_error("fgets()");
+                exit(1);
             }
+            int len = (int)strlen(input);
+            input[len - 1] = '\0'; // if input length >= 50 i dont care
 
-            if(strcmp(command, "1") && strcmp(command, "2") && strcmp(command, "3") && strcmp(command, "4") && strcmp(command, "quit") 
-                && strcmp(command, "stop") && strcmp(command, "help")){
-                print_client_warning("enter a number from 1 to 4!");
-                continue;
+            ClientCmdType cmd;  // manages the right request to the server
+            cmd = parse_user_input(input);
+            /* Filter out invalid commands early */
+            if (cmd == CLIENT_CMD_INVALID) {
+                print_client_warning("Invalid choice! Enter 1-4 for tasks or 'help', 'quit', 'stop'.");
+                continue; // Don't send anything to server, prompt again
             }
             
+            const char *command = format_server_payload(cmd);
+            printf("COMMAND %s", command);
             // send command lenght
-            int len = strlen(command);
+            len = strlen(command);
             unsigned int netLen = htonl(len);
-            // if command = {1-4} then send the request!
             if(send(client_socket, &netLen, sizeof(netLen), 0) < 0){
                 print_client_error("SENDing request # of chars to server");
                 break;
             }
-            if(send(client_socket, &command, len, 0) < 0){
+            if(send(client_socket, command, len, 0) < 0){
                 print_client_error("SENDing command to server");
                 break;
             }
 
-            // TODO handle ans based on tasks
         }
 
     }
