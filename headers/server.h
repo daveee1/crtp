@@ -3,7 +3,7 @@
 #include "headers/task.h"
 #include "headers/rsa.h"
 
-
+#include <limits.h> // needed to use INT_MAX as lowest_instance in 'find_instance_to_deactivate()'
 #include <time.h>
 #include <sys/types.h>
 #include <sys/socket.h>

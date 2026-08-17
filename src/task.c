@@ -49,7 +49,7 @@ const Task TASK_CATALOG[] = {
 };
 
 static void init_active_task(ActiveTask *t, int position){
-    t->active = -1;
+    t->active = 0;
     t->instance_id = -1;
     t->position = position;
 }
@@ -65,7 +65,7 @@ void init_active_tasks(){
 
 int find_free_pos_in_tasksactive(){
     for(int i = 0; i < MAX_NUMBER_ACTIVE_TASKS; i++){
-        if(tasks_active[i].active == -1){
+        if(tasks_active[i].active == 0){
             return i;
         }
     }
@@ -90,7 +90,7 @@ int add_active_task(ActiveTask *new_task){
     task->task_id = new_task->task_id;
     task->position = free_pos;
     task->client_owner_fd = new_task->client_owner_fd;
-    task->instance_id += 1;  
+    task->instance_id = free_pos;  
     
     pthread_mutex_unlock(&active_tasks_mutex);
     return free_pos;
@@ -100,7 +100,7 @@ void remove_active_task(int position){
     pthread_mutex_lock(&active_tasks_mutex);
     
     ActiveTask *task = &tasks_active[position];
-    task->active = -1;
+    task->active = 0;
     task->instance_id = -1;
     task->client_owner_fd = -1;
     task->task_id = -1;

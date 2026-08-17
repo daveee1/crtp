@@ -126,6 +126,26 @@ static void *handling_active_task(void *task)
     return NULL;
 }
 
+static int find_instance_to_deactivate(ActiveTask *at){
+    int min = -1;
+    int lowest_instance = INT_MAX;    // we dont exaggerate...
+    for(int i = 0; i < MAX_NUMBER_ACTIVE_TASKS; i++){
+        ActiveTask *current = &tasks_active[i];
+        if(current->active && 
+            current->task_id == at->task_id &&
+            current->client_owner_fd == at->client_owner_fd)
+            {
+                if(current->instance_id < lowest_instance){
+                    // UPDATE
+                    min = i;
+                    lowest_instance = current->instance_id;
+                }
+            }
+    }
+    if(min == -1)
+        return -1;
+    return min;
+}
 
 
 /* Handle an established  connection
@@ -137,6 +157,7 @@ static void handleConnection(int currSd)
     char *command, *answer;
     int quit = 0; // close current client
     int task_number = -1;
+    ActiveTask candidate_task;
     
     while(1)
     {
@@ -195,11 +216,10 @@ static void handleConnection(int currSd)
                 task_number = parse_task_number(command);
                 if(task_number < 1 || task_number > 4){
                     print_server_error("ACTIVATE no number detected in the client command");
-                    answer = "ERROR invalid number detected: must be in [1-4] ";
+                    answer = strdup("ERROR invalid number detected: must be in [1-4] ");
                     break;
                 }
                 // declare new task to be potentially added
-                ActiveTask candidate_task;
                 candidate_task.task_id = task_number;
                 candidate_task.client_owner_fd = currSd;
 
@@ -246,12 +266,33 @@ static void handleConnection(int currSd)
                 break;
             
             case CMD_DEACTIVATE:
-                // task_number = parse_task_number(command);
-                // if(task_number == -1){
-                    // print_server_error("DEACTIVATE no number detected in the client command");
-                    // exit(1);
-                // }
-                // deactivate();
+                task_number = parse_task_number(command);
+                if(task_number < 1 || task_number > 4){
+                    print_server_error("DEACTIVATE no number detected in the client command");
+                    answer = strdup("ERROR invalid number detected: must be in [1-4] ");
+                    break;
+                }
+                candidate_task.task_id = task_number;
+                candidate_task.client_owner_fd = currSd;
+                // must disable the thread
+                    // associated to this task
+                        // by that client
+                            // the lowest instance (first one that arrived)
+                // how? by setting that activetask in tasks_active to NOT active
+                pthread_mutex_lock(&active_tasks_mutex);
+
+                // scan for all tasks_active, chose the position where the lowest
+                //  instance of this client is active
+                int pos = find_instance_to_deactivate(&candidate_task);
+                if (pos == -1) {
+                    pthread_mutex_unlock(&active_tasks_mutex);
+                    print_server_error("ERROR handleConnection(): find_instance_to_deactivate");
+                    answer = strdup("ERROR task not active");
+                    break;
+                }
+                tasks_active[pos].active = 0;
+                pthread_mutex_unlock(&active_tasks_mutex);
+
                 answer = strdup("task DEACTIVATED");
                 break;
             
@@ -581,6 +622,8 @@ int main(int argc, char *argv[]){
     pthread_mutex_destroy(&mutexstopserver);
     pthread_cond_destroy(&roomAvailable);
     pthread_cond_destroy(&dataAvailable);
+    pthread_mutex_destroy(&active_tasks_mutex);
+    sem_destroy(&free_slots_sem);
     
     // close server
     print_server("CLOSING cleanly");
