@@ -68,6 +68,65 @@ static int parse_task_number(const char *command) {
 }
 
 
+/* Thread routine. It calls routine handleConnection() */
+static void *handling_active_task(void *task)
+{
+    ActiveTask *t = (ActiveTask*)task; // make it a 'Client' object
+    // i want to activate t.task_id...
+    int pos = t->position;
+    int catalog_index = t->task_id - 1;
+    
+    if (catalog_index < 0 || catalog_index >= 4) 
+        return NULL;
+
+    if (!TASK_CATALOG[catalog_index].routine) 
+        return NULL;
+
+    TASK_CATALOG[catalog_index].routine();
+    
+
+    // Retrieve period in milliseconds from catalog
+    int period_ms = TASK_CATALOG[catalog_index].period;
+
+    struct timespec next_execution;
+    clock_gettime(CLOCK_MONOTONIC, &next_execution);
+
+    // Loop periodically until the task is deactivated or server shuts down
+    while (1) {
+        // Lock mutex to safely check if task was deactivated
+        pthread_mutex_lock(&active_tasks_mutex);
+        int is_active = (tasks_active[pos].active == 1);
+        pthread_mutex_unlock(&active_tasks_mutex);
+
+        if (!is_active || close_server) {
+            break;
+        }
+
+        /* 1. Execute workload */
+        if (TASK_CATALOG[catalog_index].routine) {
+            TASK_CATALOG[catalog_index].routine();
+        }
+
+        /* 2. Calculate next absolute wake-up time: next_execution += period */
+        next_execution.tv_sec += period_ms / 1000;
+        next_execution.tv_nsec += (period_ms % 1000) * 1000000L;    // must be transformed into nanosecs!
+
+        // Handle nanosecond overflow
+        if (next_execution.tv_nsec >= 1000000000L) {
+            next_execution.tv_sec += 1;
+            next_execution.tv_nsec -= 1000000000L;
+        }
+
+        /* 3. Sleep until absolute next activation time */
+        clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next_execution, NULL);
+    }
+
+    remove_active_task(pos);
+
+    return NULL;
+}
+
+
 
 /* Handle an established  connection
    routine receive is listed in the previous example */
@@ -132,28 +191,58 @@ static void handleConnection(int currSd)
                 break;
 
             case CMD_ACTIVATE:
-                // task_number = parse_task_number(command);
-                // if(task_number == -1)
-                //     print_server_error("ACTIVATE no number detected in the client command");
-                
-                // pthread_mutex_t *mutex_task;
-                // switch(task_number){
-                //     case 1:
-                        // mutex_task = &mutex_task_1;
-                        // break;
-                //     case 2:
-                //         mutex_task = &mutex_task_2;
-                        // break;
-                //     case 3:
-                //         mutex_task = &mutex_task_3;
-                        // break;
-                //     case 4:
-                //         mutex_task = &mutex_task_4;
-                        // break;
-                // }
-                
-                // activate();
-                answer = strdup("task ACTIVATED");
+                // which tasks we refer to?
+                task_number = parse_task_number(command);
+                if(task_number < 1 || task_number > 4){
+                    print_server_error("ACTIVATE no number detected in the client command");
+                    answer = "ERROR invalid number detected: must be in [1-4] ";
+                    break;
+                }
+                // declare new task to be potentially added
+                ActiveTask candidate_task;
+                candidate_task.task_id = task_number;
+                candidate_task.client_owner_fd = currSd;
+
+                if(is_schedulable(candidate_task) <= 0){
+                    // snprintf(
+                        //     s,
+                        //     sizeof(s),
+                        //     "CLOSED CLIENT: cl->%s, port->%d",
+                        //     client->ip,
+                        //     client->port
+                        // );
+                    
+                    // task NOT SCHEDULABLE:retry
+                    print_server("[SCHEDULER] Task rejected: System unschedulable");
+                    answer = strdup("TASK_REJECTED: System unschedulable (Deadline miss risk)");
+
+                }
+                else{
+                    // task SCHEDULABLE:add it to active_tasks array!
+                    int free_pos = add_active_task(&candidate_task);
+                    // generate a thread for it
+                    if(free_pos == -1){
+                        print_server("FULL CAPACITY, retry or deactivate!");
+                        answer = strdup("FULL CAPACITY tasks_active[]");
+                        break;
+                    }
+
+                    if(pthread_create(&tasks_active[free_pos].thread_id, NULL, handling_active_task, &tasks_active[free_pos])){
+                        print_server_error("Failed to spawn worker thread for task");
+                        answer = strdup("ERROR: Thread creation failed");
+                        break;
+                    }
+
+
+                    // Detach thread so resources auto-reclaim on completion
+                    pthread_detach(tasks_active[free_pos].thread_id);   //TODO what is this
+
+                    char buf[128];
+                    snprintf(buf, sizeof(buf), "TASK %d ACTIVATED in slot %d", task_number, free_pos);
+                    print_server(buf);
+                    
+                    answer = strdup("TASK_ACTIVATED");
+                }
                 break;
             
             case CMD_DEACTIVATE:
@@ -172,7 +261,6 @@ static void handleConnection(int currSd)
                 break;
                 
         }
-        printf("handle connection after cmd\n");
         
             
         if (!answer) {
@@ -198,7 +286,6 @@ static void handleConnection(int currSd)
             free(answer);
             break;
         }
-        printf("handle connection after send\n");
         free(command);
         free(answer);
         
@@ -221,7 +308,6 @@ static void rmvclient_unlocked(Client *client) {
         close(client->socket_fd);
         client->socket_fd = -1;
     }
-    printf("closed socket\n");
 
     /* 3. Mark the slot as inactive */
     client->active = 0;
@@ -293,7 +379,6 @@ static void addclient(int current_socket, struct sockaddr_in *retSin)
     /* Convert port from network byte order */
     client->port = ntohs(retSin->sin_port);
 
-    printf("current socket: %d", client->socket_fd);
     /* Convert binary IPv4 address to ASCII string */
     inet_ntop(
         AF_INET,
@@ -310,13 +395,14 @@ static void addclient(int current_socket, struct sockaddr_in *retSin)
             client
         ) != 0)
     {
+        pthread_mutex_unlock(&mutex);
         print_server_error("pthread_create failed");
         /* Undo the allocation of this slot */
         client->active = 0;
         return;
     }
-
     pthread_mutex_unlock(&mutex);
+
 
     /* Debugging */
     char s[100];
@@ -436,6 +522,7 @@ int main(int argc, char *argv[]){
 
     sAddrLen = sizeof(retSin);
     init_clients_buffer();
+    init_active_tasks();
 
     while(!close_server)
     {
@@ -446,7 +533,7 @@ int main(int argc, char *argv[]){
         // timer
         struct timeval timeout;
         timeout.tv_sec = 3;
-        timeout.tv_sec = 0;
+        timeout.tv_usec = 0;
 
         // IMP: check if server_socket has a client waiting in the connection queue
         int activity = select(server_socket + 1, &read_fds, NULL, NULL, &timeout); // server_soc + 1: highest fd + 1
@@ -481,7 +568,6 @@ int main(int argc, char *argv[]){
                 print_server_error("ACCEPT failed");
             
             // add client to the buffer, manage its connection
-            printf("add client\n");
             addclient(currSock, &retSin);
         }
     }
@@ -492,8 +578,10 @@ int main(int argc, char *argv[]){
 
     // Destroy mutexes and condition variables
     pthread_mutex_destroy(&mutex);
+    pthread_mutex_destroy(&mutexstopserver);
     pthread_cond_destroy(&roomAvailable);
-
+    pthread_cond_destroy(&dataAvailable);
+    
     // close server
     print_server("CLOSING cleanly");
 
