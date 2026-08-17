@@ -148,7 +148,6 @@ int main(int argc, char **argv)
     }
 
     print_client("Enter command: \n");
-    print_client(">");
     while(1)
     {
         fd_set read_fds;
@@ -177,8 +176,6 @@ int main(int argc, char **argv)
 
         //2) input by user detected
         if(FD_ISSET(STDIN_FILENO, &read_fds) > 0){
-            printf("> ");
-            
             char input[50];
             if (fgets(input, sizeof(input), stdin) == NULL){
                 print_client_error("fgets()");
@@ -196,7 +193,6 @@ int main(int argc, char **argv)
             }
             
             const char *command = format_server_payload(cmd);
-            printf("COMMAND %s", command);
             // send command lenght
             len = strlen(command);
             unsigned int netLen = htonl(len);

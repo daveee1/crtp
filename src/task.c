@@ -5,6 +5,7 @@
 ActiveTask tasks_active[MAX_NUMBER_ACTIVE_TASKS];
 pthread_mutex_t active_tasks_mutex = PTHREAD_MUTEX_INITIALIZER;
 sem_t free_slots_sem;
+static int next_instance_id = 0;
 
 static void run_task1_unlocked(void) {
     printf("task 1 activated\n");
@@ -60,7 +61,7 @@ void init_active_tasks(){
         init_active_task(&tasks_active[i], i);
     
     pthread_mutex_unlock(&active_tasks_mutex);
-    sem_init(&free_slots_sem, 0, MAX_NUMBER_ACTIVE_TASKS - 1);  // why 0? to say semaphore is NOT shared
+    sem_init(&free_slots_sem, 0, MAX_NUMBER_ACTIVE_TASKS);  // why 0? to say semaphore is NOT shared
 }
 
 int find_free_pos_in_tasksactive(){
@@ -90,7 +91,7 @@ int add_active_task(ActiveTask *new_task){
     task->task_id = new_task->task_id;
     task->position = free_pos;
     task->client_owner_fd = new_task->client_owner_fd;
-    task->instance_id = free_pos;  
+    task->instance_id = next_instance_id++;  
     
     pthread_mutex_unlock(&active_tasks_mutex);
     return free_pos;

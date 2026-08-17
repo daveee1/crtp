@@ -129,18 +129,16 @@ static void *handling_active_task(void *task)
 
 static int find_instance_to_deactivate(ActiveTask *at){
     int min = -1;
-    int lowest_instance = INT_MAX;    // we dont exaggerate...
+    int lowest_instance = INT_MAX;
     for(int i = 0; i < MAX_NUMBER_ACTIVE_TASKS; i++){
         ActiveTask *current = &tasks_active[i];
         if(current->active && 
             current->task_id == at->task_id &&
-            current->client_owner_fd == at->client_owner_fd)
+            current->instance_id < lowest_instance)
             {
-                if(current->instance_id < lowest_instance){
-                    // UPDATE
-                    min = i;
-                    lowest_instance = current->instance_id;
-                }
+                // UPDATE
+                min = i;
+                lowest_instance = current->instance_id;
             }
     }
     if(min == -1)
@@ -224,7 +222,7 @@ static void handleConnection(int currSd)
                 candidate_task.task_id = task_number;
                 candidate_task.client_owner_fd = currSd;
 
-                if(is_schedulable(candidate_task) <= 0){
+                if(is_schedulable(candidate_task) == -1){
                     // snprintf(
                         //     s,
                         //     sizeof(s),

@@ -86,7 +86,7 @@ static int rta(ActiveTask new_active_task){
     total_tasks++;
 
     /* 3. Sort tasks by Rate Monotonic Priority (Shorter Period = Higher Priority) */
-    qsort(eval_set, total_tasks, sizeof(SchedTask), compare_rms_priority);
+    qsort(eval_set, total_tasks, sizeof(SchedTask), compare_rms_priority); // TODO how it works
 
     // once sorted: RTA analysis FOR EACH ACTIVE TASK! 
     for(int i = 0; i < total_tasks; i++){
@@ -110,6 +110,7 @@ static int rta(ActiveTask new_active_task){
             
             if(response_time > P_i)
                 return -1;  // unschedulable
+            printf("[RTA]: respprev: %Lf, resptime: %Lf\n", response_prev, response_time);
         }
     }
 
@@ -124,18 +125,23 @@ Given all the current active tasks tell me if we can schedule
 */
 int is_schedulable(ActiveTask new_active_task){
     int u = utilization_factor(new_active_task);
+    char s[50];
     if(u == 1){
-        printf("SCHEDULABLE task %d by Utilization factor\n", new_active_task.task_id);
+        snprintf(s, sizeof(s), "schedulable task %d by Utilization factor\n", new_active_task.task_id);
+        print_analysis(s);
         return 1;
     }
 
     else if(u == 0){
         if(rta(new_active_task)){
-            printf("SCHEDULABLE task %d by RTA\n", new_active_task.task_id);
+            snprintf(s, sizeof(s), "schedulable task %d by RTA\n", new_active_task.task_id);
+            print_analysis(s);
             return 1;
         }
     }
-
-    printf("NOT SCHEDULABLE task %d\n", new_active_task.task_id);
+    
+    snprintf(s, sizeof(s), "NOT SCHEDULABLE task %d\n", new_active_task.task_id);
+    print_analysis(s);
+    
     return -1;
 }

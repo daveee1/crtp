@@ -23,6 +23,9 @@ void print_client_warning(const char *s) {
     printf("%s[CLIENT WARNING] %s%s\n", COLOR_PURPLE, s, COLOR_RESET);
 }
 
+void print_analysis(const char *s) {
+    printf("%s[ANALYSIS] %s%s\n", COLOR_LIGHT_GREEN, s, COLOR_RESET);
+}
 /* Receive routine: use recv to receive from socket and manage
    the fact that recv may return after having read less bytes than
    the passed buffer size
