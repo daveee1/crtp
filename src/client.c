@@ -58,14 +58,14 @@ typedef enum {
 
 /* Parse raw user input into an enum */
 static ClientCmdType parse_user_input(const char *input) {
-    if ( !strcmp(input, "act 1") || !strcmp(input, "activate 1")) return CLIENT_CMD_ACTIVATE_TASK1;
-    else if (!strcmp(input, "act 2") || !strcmp(input, "activate 2")) return CLIENT_CMD_ACTIVATE_TASK2;
-    else if (!strcmp(input, "act 3") || !strcmp(input, "activate 3")) return CLIENT_CMD_ACTIVATE_TASK3;
-    else if (!strcmp(input, "act 4") || !strcmp(input, "activate 4")) return CLIENT_CMD_ACTIVATE_TASK4;
-    else if (!strcmp(input, "deactivate 1") || !strcmp(input, "deac 1")) return CLIENT_CMD_DEACTIVATE_TASK1;
-    else if (!strcmp(input, "deactivate 2") || !strcmp(input, "deac 2")) return CLIENT_CMD_DEACTIVATE_TASK2;
-    else if (!strcmp(input, "deactivate 3") || !strcmp(input, "deac 3")) return CLIENT_CMD_DEACTIVATE_TASK3;
-    else if (!strcmp(input, "deactivate 4") || !strcmp(input, "deac 4")) return CLIENT_CMD_DEACTIVATE_TASK4;
+    if ( !strcmp(input, "a 1") || !strcmp(input, "activate 1")) return CLIENT_CMD_ACTIVATE_TASK1;
+    else if (!strcmp(input, "a 2") || !strcmp(input, "activate 2")) return CLIENT_CMD_ACTIVATE_TASK2;
+    else if (!strcmp(input, "a 3") || !strcmp(input, "activate 3")) return CLIENT_CMD_ACTIVATE_TASK3;
+    else if (!strcmp(input, "a 4") || !strcmp(input, "activate 4")) return CLIENT_CMD_ACTIVATE_TASK4;
+    else if (!strcmp(input, "b 1") || !strcmp(input, "block 1")) return CLIENT_CMD_DEACTIVATE_TASK1;
+    else if (!strcmp(input, "b 2") || !strcmp(input, "block 2")) return CLIENT_CMD_DEACTIVATE_TASK2;
+    else if (!strcmp(input, "b 3") || !strcmp(input, "block 3")) return CLIENT_CMD_DEACTIVATE_TASK3;
+    else if (!strcmp(input, "b 4") || !strcmp(input, "block 4")) return CLIENT_CMD_DEACTIVATE_TASK4;
     else if (!strcmp(input, "help")) return CLIENT_CMD_HELP;
     else if (!strcmp(input, "quit")) return CLIENT_CMD_QUIT;
     else if (!strcmp(input, "stop")) return CLIENT_CMD_STOP;
@@ -79,10 +79,10 @@ static const char* format_server_payload(ClientCmdType cmd) {
         case CLIENT_CMD_ACTIVATE_TASK2: return "ACTIVATE 2";
         case CLIENT_CMD_ACTIVATE_TASK3: return "ACTIVATE 3";
         case CLIENT_CMD_ACTIVATE_TASK4: return "ACTIVATE 4";
-        case CLIENT_CMD_DEACTIVATE_TASK1: return "DEACTIVATE 1";
-        case CLIENT_CMD_DEACTIVATE_TASK2: return "DEACTIVATE 2";
-        case CLIENT_CMD_DEACTIVATE_TASK3: return "DEACTIVATE 3";
-        case CLIENT_CMD_DEACTIVATE_TASK4: return "DEACTIVATE 4";
+        case CLIENT_CMD_DEACTIVATE_TASK1: return "BLOCK 1";
+        case CLIENT_CMD_DEACTIVATE_TASK2: return "BLOCK 2";
+        case CLIENT_CMD_DEACTIVATE_TASK3: return "BLOCK 3";
+        case CLIENT_CMD_DEACTIVATE_TASK4: return "BLOCK 4";
         case CLIENT_CMD_HELP:  return "help";
         case CLIENT_CMD_QUIT:  return "quit";
         case CLIENT_CMD_STOP:  return "stop";
@@ -147,6 +147,8 @@ int main(int argc, char **argv)
         exit(1);
     }
 
+    print_client("Enter command: \n");
+    print_client(">");
     while(1)
     {
         fd_set read_fds;
@@ -189,7 +191,7 @@ int main(int argc, char **argv)
             cmd = parse_user_input(input);
             /* Filter out invalid commands early */
             if (cmd == CLIENT_CMD_INVALID) {
-                print_client_warning("Invalid choice! Enter 1-4 for tasks or 'help', 'quit', 'stop'.");
+                print_client_warning("Invalid choice! Enter a/b 1-4 for tasks or 'help', 'quit', 'stop'.");
                 continue; // Don't send anything to server, prompt again
             }
             

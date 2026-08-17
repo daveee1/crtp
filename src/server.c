@@ -51,7 +51,7 @@ static CommandType parse_command(const char *cmd) {
     else if (!strcmp(cmd, "stop")) return CMD_STOP;
     else if (!strcmp(cmd, "quit")) return CMD_QUIT;
     else if (strstr(cmd, "ACTIVATE") != NULL) return CMD_ACTIVATE;
-    else if (strstr(cmd, "DEACTIVATE") != NULL ) return CMD_DEACTIVATE;
+    else if (strstr(cmd, "BLOCK") != NULL ) return CMD_DEACTIVATE;
     return CMD_UNKNOWN;
 }
 
@@ -62,7 +62,7 @@ static int parse_task_number(const char *command) {
     // Tries to read "ACTIVATE <number>"
     if (sscanf(command, "ACTIVATE %d", &task_num) == 1) 
         return task_num;
-    else if (sscanf(command, "DEACTIVATE %d", &task_num) == 1) 
+    else if (sscanf(command, "BLOCK %d", &task_num) == 1) 
         return task_num;
     return -1; // Return -1 if parsing failed
 }
@@ -95,10 +95,11 @@ static void *handling_active_task(void *task)
     while (1) {
         // Lock mutex to safely check if task was deactivated
         pthread_mutex_lock(&active_tasks_mutex);
-        int is_active = (tasks_active[pos].active == 1);
+        int is_active = tasks_active[pos].active;
         pthread_mutex_unlock(&active_tasks_mutex);
 
         if (!is_active || close_server) {
+            print_server("STOP current task!");
             break;
         }
 
@@ -164,7 +165,7 @@ static void handleConnection(int currSd)
         /* Get the command string length
         If receive fails, the client most likely exited */
         if(receive(currSd, (char *)&netLen, sizeof(netLen))){
-            perror("[SERVER] receive failed before command"); // <--- ADD THIS
+            print_server_error("receive failed before command"); // <--- ADD THIS
             printf("currSd value was: %d\n", currSd);         // <--- AND THIS
             break;
         } 

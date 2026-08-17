@@ -1,4 +1,4 @@
-#include "headers/rsa.h"
+#include "headers/rta.h"
 
 /* Helper structure for temporary priority sorting in RTA*/
 typedef struct {
@@ -97,6 +97,7 @@ static int rta(ActiveTask new_active_task){
                                          // R^(0) = C_i [Base Case]
     
         while(response_prev != response_time){// till they dont converge continue!                                         
+            response_prev = response_time;
             // consider only hp tasks!
             long double interference = 0.0;
             for(int j = 0; j < i; j++){

@@ -1,0 +1,16 @@
+TODO 
+    
+    SERVER
+        right printing
+        [SERVER] BLOCK 1
+        [SERVER ERROR] ERROR handleConnection(): find_instance_to_deactivate 
+            a client cant block others tasks
+        
+
+    RTA
+        comparison by EPISLON between response_prev vs response_time
+        
+        
+
+    CLIENT
+        [CLIENT ERROR] Failed to receive full message from server.
