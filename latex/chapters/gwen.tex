@@ -1,0 +1,193 @@
+% Slide 3: System Architecture Overview
+\begin{frame}{System Architecture: High-Level View}
+    The system is divided into three distinct functional layers:
+    \begin{block}{1. Communication Layer (Networked I/O)}
+        Asynchronous TCP/IP socket management using \texttt{select()} to handle multiple client commands without blocking the main server loop.
+    \end{block}
+    \begin{block}{2. Supervisor Layer (Control Logic)}
+        A multi-threaded engine that manages a client pool and validates scheduling feasibility using a two-stage analytical approach (Utilization $\rightarrow$ RTA).
+    \end{block}
+    \begin{block}{3. Execution Layer (Real-Time Tasks)}
+        A pool of dedicated worker threads that execute periodic workloads with high-precision monotonic timing.
+    \end{block}
+\end{frame}
+
+% Slide 4: Communication Protocol
+\begin{frame}{The Networked Interface: Client-Server Protocol}
+    \begin{itemize}
+        \item \textbf{Protocol:} Client-Server communication over TCP/IP.
+        \item \textbf{Message Framing:} To prevent partial reads/writes, a length-prefixed protocol is implemented:
+        \begin{enumerate}
+            \item Server/Client sends an \texttt{unsigned int netLen} (Network Byte Order via \texttt{htonl}).
+            \item The actual payload of length \texttt{len} follows immediately.
+        \end{enumerate}
+        \item \textbf{Command Set:} 
+        \begin{itemize}
+            \item \texttt{ACTIVATE [ID]}: Request task startup.
+            \item \texttt{BLOCK [ID]}: Request task deactivation.
+            \item \texttt{STOP / QUIT}: Management of connection/server lifecycle.
+        \end{itemize}
+    \end{itemize}
+\end{frame}
+
+% Slide 5: Concurrency Model: Client Management
+\begin{frame}{Concurrency Model: Client Management}
+    \begin{itemize}
+        \item \textbf{The Multi-Client Problem:} The server must handle $N$ simultaneous clients without allowing one slow client to block others.
+        \item \textbf{Implementation:} 
+        \begin{itemize}
+            \item \textbf{Main Loop:} Uses \texttt{select()} to monitor the \texttt{server\_socket} for new connections.
+            \item \textbf{Thread-per-Client:} Upon \texttt{accept()}, a new thread (\texttt{connectionHandler}) is spawned.
+            \item \textbf{Client Buffer:} A fixed-size array of \texttt{Client} structures tracks metadata (IP, Port, Thread ID, Socket FD).
+        \end{itemize}
+        \item \textbf{Throttling:} A semaphore (\texttt{free\_slots\_sem}) and condition variable (\texttt{roomAvailable}) ensure the server does not exceed its maximum thread capacity.
+    \end{itemize}
+\end{frame}
+
+% Slide 6: Concurrency Model: Task Execution
+\begin{frame}{Concurrency Model: Task Execution}
+    \begin{itemize}
+        \item \textbf{The Thread-per-Task Model:} Once a task is deemed "schedulable," a specialized worker thread is spawned.
+        \item \textbf{The Task Lifecycle:}
+        \begin{enumerate}
+            \item \textbf{Validation:} Check RTA results.
+            \item \textbf{Instantiation:} Assign unique \texttt{instance\_id} and slot in \texttt{tasks\_active}.
+            \item \textbf{Execution:} The thread enters a periodic loop.
+            \item \textbf{Deactivation:} The thread monitors its \texttt{active} flag; once set to 0, it exits cleanly.
+        \end{enumerate}
+        \item \textbf{Detachment:} Threads are \texttt{pthread\_detach}'d to prevent zombie processes and ensure automatic resource reclamation.
+    \end{itemize}
+\end{frame}
+
+% Slide 7: Synchronization: Mutexes
+\begin{frame}{Synchronization: Protecting Shared State}
+    In a multi-threaded environment, race conditions during RTA analysis are fatal. We employ several mutexes:
+    \begin{itemize}
+        \item \textbf{\texttt{active\_tasks\_mutex}:} The most critical lock. It protects the \texttt{tasks\_active} array. It is held during:
+        \begin{itemize}
+            \item Task addition/removal.
+            \item The entire duration of the RTA calculation (to ensure a consistent snapshot of the system).
+        \end{itemize}
+        \item \textbf{\texttt{mutex} (Client Buffer):} Protects the integrity of the \texttt{clients[]} array when clients connect or disconnect.
+        \item \textbf{\texttt{mutexstopserver}:} Protects the global shutdown flag to ensure all threads see the signal simultaneously.
+    \end{itemize}
+\end{frame}
+
+
+% Slide 8: Synchronization: Semaphores & Condition Variables
+\begin{frame}{Synchronization: Throttling and Signaling}
+    \begin{itemize}
+        \item \textbf{Semaphores (\texttt{sem\_t}):}
+        \begin{itemize}
+            \item \texttt{free\_slots\_sem}: Acts as a counting semaphore to limit the number of active tasks. This prevents system exhaustion.
+        \end{itemize}
+        \item \textbf{Condition Variables (\texttt{pthread\_cond\_t}):}
+        \begin{itemize}
+            \item \texttt{roomAvailable}: Used in the \texttt{addclient} function. If the client buffer is full, the thread waits on this variable, preventing busy-waiting and allowing efficient CPU usage.
+        \end{itemize}
+        \item \textbf{Atomicity:} The use of these primitives ensures that the transition between "Task Requested" and "Task Running" is atomic and thread-safe.
+    \end{itemize}
+\end{frame}
+
+% Slide 9: Scheduling Theory: Rate Monotonic (RMS)
+\begin{frame}{Scheduling Theory: Rate Monotonic Scheduling}
+    \begin{itemize}
+        \item \textbf{Core Principle:} We assume a fixed-priority, preemptive scheduler where priority is inversely proportional to the task period ($P_i$).
+        \item \textbf{The Priority Logic:}
+        \[ \text{If } P_i < P_j \implies \text{Priority}(i) > \text{Priority}(j) \]
+        \item \textbf{Implementation:} 
+        \begin{itemize}
+            \item During RTA, the system collects all currently active tasks.
+            \item It applies \texttt{qsort} using the \texttt{compare\_rms\_priority} function.
+            \item This sorting is essential because the RTA calculation depends on the interference from higher-priority tasks.
+        \end{itemize}
+    \end{itemize}
+\end{frame}
+
+% Slide 10: Schedulability: Utilization Bound
+\begin{frame}{Schedulability: The Utilization Factor}
+    Before performing the heavy-duty RTA, we perform a fast-path check using the \textbf{Utilization Factor} ($U$):
+    \begin{block}{The Mathematical Test}
+        \[ U = \sum_{i=1}^{n} \frac{C_i}{P_i} \]
+    \end{block}
+    \begin{itemize}
+        \item \textbf{Case 1: $U > 1.0$}: The system is physically over-utilized. Immediate rejection.
+        \item \textbf{Case 2: $U \leq 0.693$ (approx. $\ln 2$)}: According to the Liu and Layland bound, the task set is guaranteed to be schedulable under RMS.
+        \item \textbf{Case 3: $0.693 < U \leq 1.0$}: The system is in the "uncertain zone." We must proceed to the iterative RTA to find the exact response time.
+    \end{itemize}
+\end{frame}
+
+% Slide 11: Schedulability: Response Time Analysis (RTA)
+\begin{frame}{Schedulability: Iterative RTA Algorithm}
+    For tasks in the "uncertain zone," we calculate the worst-case response time ($R_i$) for each task.
+    \begin{block}{The Iterative Formula}
+        \[ R_i^{(k+1)} = C_i + \sum_{j \in HP(i)} \left\lceil \frac{R_i^{(k)}}{P_j} \right\rceil C_j \]
+    \end{block}
+    \begin{itemize}
+        \item $HP(i)$: The set of tasks with higher priority than task $i$.
+        \item $C_j, P_j$: Execution time and period of higher-priority tasks.
+        \item $\lceil \dots \rceil$: The ceiling function, representing the number of times a higher-priority task preempts task $i$.
+        \item \textbf{Termination:} The iteration continues until $R_i^{(k+1)} = R_i^{(k)}$. If $R_i > P_i$ at any point, the task is \textit{unschedulable}.
+    \end{itemize}
+\end{frame}
+
+% Slide 12: RTA: Implementation Details
+\begin{frame}{RTA: Implementation Details}
+    \begin{itemize}
+        \item \textbf{Data Integrity:} We use a local \texttt{eval\_set} array during RTA to avoid holding the \texttt{active\_tasks\_mutex} for an excessive amount of time, though the initial copy must be protected.
+        \item \textbf{Precision:} We utilize \texttt{long double} and the \texttt{ceill} function to prevent floating-point rounding errors that could lead to false "schedulable" results.
+        \item \textbf{Code Logic Snippet:}
+    \end{itemize}
+    %\begin{lstlisting}
+    %while(response_prev != response_time) {
+    %    response_prev = response_time;
+    %    long double interference = 0.0;
+    %    for(int j = 0; j < i; j++) {
+    %        interference += ceill(response_prev / P_j) * C_j;
+    %    }
+    %    response_time += interference;
+    %    if(response_time > P_i) return -1; // Unschedulable
+    %}
+    %\end{lstlisting}
+\end{frame}
+
+%Slide 13: Real-Time Precision: The Clock
+%\begin{frame}{Real-Time Precision: Avoiding Drift}
+%    Standard \texttt{sleep()} or \texttt{usleep()} functions are unsuitable for real-time periodic tasks because they suffer from \textbf{cumulative drift}.
+%    \begin{itemize}
+%        \item \textbf{The Problem:} If a task executes and then sleeps for $P$, the time taken to execute is not accounted for, causing the period to "creep" forward.
+%        \item \textbf{The Solution:} \texttt{clock\_nanosleep()} with \texttt{TIMER\_ABSTIME}.
+%        \item \textbf{Methodology:} 
+%        \begin{enumerate}
+%            \item Calculate the \textit{absolute} time of the next activation: $T_{next} = T_{current} + P$.
+%            \item Command the kernel to wake the thread at exactly $T_{next}$.
+%            \item This ensures the period is tied to a monotonic reference, regardless of how long the workload took to execute.
+%        \end{enumerate}
+%    \end{itemize}
+%\end{frame}
+
+% Slide 14: Safety and Robustness
+\begin{frame}{Safety and Robustness}
+    \begin{itemize}
+        \item \textbf{Resource Leak Prevention:}
+        \begin{itemize}
+            \item Using \texttt{pthread\_detach} ensures that when a task is "blocked," its thread resources are reclaimed without needing an explicit \texttt{pthread\_join} in the main loop.
+            \item The \texttt{find\_instance\_to\_deactivate} logic ensures we target the correct task instance, preventing accidental deactivation of newly arrived tasks of the same type.
+        \end{itemize}
+        \item \textbf{Error Handling:} 
+        \begin{itemize}
+            \item Robust error reporting using \texttt{strerror(errno)} for socket failures.
+            \item Graceful shutdown via a broadcast mechanism that signals all clients to close.
+        \end{itemize}
+    \end{itemize}
+\end{frame}
+
+% Slide 15: Conclusion
+\begin{frame}{Conclusion}
+    \begin{itemize}
+        \item \textbf{Complexity Managed:} Successfully combined Network I/O, Multi-threading, and Real-Time Scheduling into a cohesive C system.
+        \item \textbf{Determinism:} The implementation of RTA provides a mathematical guarantee of system stability, transforming a "best-effort" server into a "real-time" supervisor.
+        \item \textbf{Concurrency:} Robust use of POSIX primitives (Mutex, Semaphore, CV) ensures data integrity under high contention.
+        \item \textbf{Summary:} The project demonstrates the rigorous requirements of systems programming where timing, synchronization, and mathematical validation are paramount.
+    \end{itemize}
+\end{frame}

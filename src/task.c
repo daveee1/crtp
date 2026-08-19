@@ -40,12 +40,12 @@ static void run_task4_unlocked(void) {
 
 
 
-
+// taskid, cpuusage, period, deadline, routine
 const Task TASK_CATALOG[] = {
-    {1,  300, 1000, 1000, run_task1_unlocked},
-    {2,  150,  500,  500, run_task2_unlocked},
-    {3,   80,  400,  400, run_task3_unlocked},
-    {4,   20,  100,  100, run_task4_unlocked}
+    {1,  300, 1000, 900, run_task1_unlocked},
+    {2,  150,  500,  350, run_task2_unlocked},
+    {3,   80,  400,  300, run_task3_unlocked},
+    {4,   20,  100,  80, run_task4_unlocked}
 };
 
 static void init_active_task(ActiveTask *t, int position){

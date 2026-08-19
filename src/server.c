@@ -199,8 +199,15 @@ static void handleConnection(int currSd)
         /* Get the command string length
         If receive fails, the client most likely exited */
         if(receive(currSd, (char *)&netLen, sizeof(netLen))){
-            print_server_error("receive failed before command"); // <--- ADD THIS
-            printf("currSd value was: %d\n", currSd);         // <--- AND THIS
+            // an error occured in the recv() method
+            print_server_warning("receive failed before command: client exited");
+            char s[50];
+            snprintf(
+                s,
+                sizeof(s),
+                "currSd value was: %d", currSd
+            );
+            print_server_warning(s);         
             break;
         } 
         /* Convert from network byte order */
@@ -537,14 +544,12 @@ int main(int argc, char *argv[]){
         print_server_error("socket not correct");
         exit(-1);
     }
-
     print_server("SOCKET ACTIVATED");
-    // set REUSE ADDRESS option:
-    // if i close the socket but there are still packets traversing 
-    // then i wait till i receive all the traffic. ALSO even if
-    // i close this socket create a new one on this port anyway
+    
+    // Allow the server to reuse the local address/port after the socket is closed,
+    // particularly when the previous TCP connection is in TIME_WAIT.
     int reuse = 1;
-    if(setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0)  //TODO
+    if(setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0)
         print_server_error("setsockopt(SO_REUSEADDR) failed");
 
     /* Initialize the address (struct sokaddr_in) fields */

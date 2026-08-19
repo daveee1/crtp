@@ -10,10 +10,10 @@
 
 
 typedef struct{
-    char id;
-    long cpu_usage;
-    long deadline;
-    long period;
+    int id;
+    long double cpu_usage;
+    long double period;
+    long double deadline;
     void (*routine)(void);
 }Task;
 

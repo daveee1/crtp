@@ -3,8 +3,9 @@
 /* Helper structure for temporary priority sorting in RTA*/
 typedef struct {
     int task_id;
-    int cpu_usage;  /* C_i */
-    int period;     /* P_i / D_i */
+    long double cpu_usage;  /* C_i */
+    long double period;     /* P_i */
+    long double deadline;   /* D_i */
 } SchedTask;
 
 
@@ -24,7 +25,7 @@ static int utilization_factor(ActiveTask new_active_task) {
         }   
     }
 
-    /* 2. Add candidate task utilization */
+    /* 2. Add candidate task utilization to the final sum */
     const Task *new_task = &TASK_CATALOG[new_active_task.task_id - 1];
     sum += (long double)new_task->cpu_usage / new_task->period;
 
@@ -40,10 +41,17 @@ static int utilization_factor(ActiveTask new_active_task) {
     }
 
     /* 5. If 0.693 < sum <= 1.0, return a status indicating exact RTA is needed */
-    return 0; // Inconclusive: Must perform iterative RTA (R_i calculation)
+    return 0; // Inconclusive: Must perform iterative RTA
 }
 
-
+/*
+    Compare two tasks a and b:
+        < 0  → a comes before b
+        0  → a and b are considered equal in ordering
+        > 0  → a comes after b
+    necessary to sort tasks in increasing order of periods
+    to find highest priority's tasks.
+*/
 int compare_rms_priority(const void *a, const void *b) {
     const SchedTask *taskA = (const SchedTask *)a;
     const SchedTask *taskB = (const SchedTask *)b;
@@ -73,6 +81,7 @@ static int rta(ActiveTask new_active_task){
             eval_set[total_tasks].task_id = catalog_entry->id;
             eval_set[total_tasks].cpu_usage = catalog_entry->cpu_usage;
             eval_set[total_tasks].period = catalog_entry->period;
+            eval_set[total_tasks].deadline = catalog_entry->deadline;
             total_tasks++;
         }
     }
@@ -83,15 +92,17 @@ static int rta(ActiveTask new_active_task){
     eval_set[total_tasks].task_id = new_catalog_entry->id;
     eval_set[total_tasks].cpu_usage = new_catalog_entry->cpu_usage;
     eval_set[total_tasks].period = new_catalog_entry->period;
+    eval_set[total_tasks].deadline = new_catalog_entry->deadline;
     total_tasks++;
 
     /* 3. Sort tasks by Rate Monotonic Priority (Shorter Period = Higher Priority) */
-    qsort(eval_set, total_tasks, sizeof(SchedTask), compare_rms_priority); // TODO how it works
+    qsort(eval_set, total_tasks, sizeof(SchedTask), compare_rms_priority);
 
-    // once sorted: RTA analysis FOR EACH ACTIVE TASK! 
+    // once 'eval_set' sorted: RTA analysis FOR EACH ACTIVE TASK! 
     for(int i = 0; i < total_tasks; i++){
         long double C_i = eval_set[i].cpu_usage;
         long double P_i = eval_set[i].period;
+        long double D_i = eval_set[i].deadline; 
         long double response_prev = 0.0;
         long double response_time = C_i; // Initial response time iteration 
                                          // R^(0) = C_i [Base Case]
@@ -108,7 +119,7 @@ static int rta(ActiveTask new_active_task){
             }
             response_time += interference;
             
-            if(response_time > P_i)
+            if(response_time > D_i)
                 return -1;  // unschedulable
             printf("[RTA]: respprev: %Lf, resptime: %Lf\n", response_prev, response_time);
         }
