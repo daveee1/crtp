@@ -35,8 +35,7 @@ typedef enum {
     CMD_STOP,
     CMD_QUIT,
     CMD_ACTIVATE,
-    CMD_DEACTIVATE,
-    CMD_UNKNOWN
+    CMD_DEACTIVATE
 } CommandType;
 
 /* Helper function to map command strings to enum values */
@@ -46,7 +45,6 @@ static CommandType parse_command(const char *cmd) {
     else if (!strcmp(cmd, "quit")) return CMD_QUIT;
     else if (strstr(cmd, "ACTIVATE") != NULL) return CMD_ACTIVATE;
     else if (strstr(cmd, "BLOCK") != NULL ) return CMD_DEACTIVATE;
-    return CMD_UNKNOWN;
 }
 
 
@@ -186,7 +184,6 @@ static void rmvclient(Client *client) {
     CMD_STOP: put close_server to 1
     CMD_ACTIVATE: activate according task
     CMD_DEACTIVATE: deactivate according task
-    CMD_UNKNOWN: TODO not necessary
 */
 static void handleConnection(int currSd)
 {
@@ -335,11 +332,6 @@ static void handleConnection(int currSd)
 
                 answer = strdup("task DEACTIVATED");
                 break;
-            
-            case CMD_UNKNOWN: // TODO necessary?
-            default:
-                answer = strdup("invalid command (try help).");
-                break;
         }
         
         if (!answer) {
@@ -476,7 +468,7 @@ static void closing_broadcast_to_clients(){
     const char *shutdown_msg = "SERVER_SHUTDOWN";
     int msg_len = strlen(shutdown_msg);
 
-    print_server("SERVER_SHUTDOWN: activated\n");
+    print_server("SERVER_SHUTDOWN: activated");
 
     for(int i = 0; i < MAX_THREADS; i++){
         Client *current_client = &clients[i];

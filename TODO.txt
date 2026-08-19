@@ -6,6 +6,10 @@ TODO
 
         // eliminate useless variables
 
+        [SERVER ERROR] receive failed before command
+            currSd value was: 7
+
+            
     RTA
         comparison by EPISLON between response_prev vs response_time
 
