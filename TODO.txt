@@ -1,20 +1,21 @@
 TODO 
     
     SERVER
-        right printing
-        [SERVER] BLOCK 1
-       
-        [SERVER ERROR] ERROR handleConnection(): find_instance_to_deactivate
 
         why unschedulable? tell why to the client
 
-        when writing STOP how all the tasks get disactivated?
-            by close_server condition in the loop managed by each thread for that active task!
+        // eliminate useless variables
 
     RTA
         comparison by EPISLON between response_prev vs response_time
+
+        deadline field necessary?
         
         
 
     CLIENT
         [CLIENT ERROR] Failed to receive full message from server.
+
+
+    PRESENTATION
+        exploit unsloth drag everything

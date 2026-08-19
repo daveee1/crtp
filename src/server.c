@@ -1,6 +1,6 @@
 #include "headers/server.h"
 
-#define MAX_THREADS 2
+#define MAX_THREADS 5
 
 typedef struct {
     int socket_fd;
@@ -16,22 +16,16 @@ typedef struct {
 // our clients's buffer
 Client clients[MAX_THREADS];
 
+
+// global variable: if a client wants to close the server
+int close_server = 0;
+
 // SEMAPHOREES
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutexstopserver = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutexstopserver = PTHREAD_MUTEX_INITIALIZER;  // necessary to overwrite correcly variable close_server
 // roomAvailable when there is space in the buffer, dataAvailable when buffer has clients already in it
 pthread_cond_t roomAvailable = PTHREAD_COND_INITIALIZER;
 pthread_cond_t dataAvailable = PTHREAD_COND_INITIALIZER;
-// for tasks
-pthread_mutex_t mutex_task_1 = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex_task_2 = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex_task_3 = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex_task_4 = PTHREAD_MUTEX_INITIALIZER;
-
-
-// if a client wants to close the server
-int close_server = 0;
-
 
 
 
@@ -98,19 +92,19 @@ static void *handling_active_task(void *task)
         int is_active = tasks_active[pos].active;
         pthread_mutex_unlock(&active_tasks_mutex);
 
-        if (!is_active || close_server) {
+        if (is_active == 0 || close_server == 1) {
             print_server("STOP current task!");
             break;
         }
 
         /* 1. Execute workload */
-        if (TASK_CATALOG[catalog_index].routine) {
-            TASK_CATALOG[catalog_index].routine();
-        }
+        TASK_CATALOG[catalog_index].routine();
 
         /* 2. Calculate next absolute wake-up time: next_execution += period */
+        // NOTE nsec necessay for tasks with period < 1 sec
         next_execution.tv_sec += period_ms / 1000;
         next_execution.tv_nsec += (period_ms % 1000) * 1000000L;    // must be transformed into nanosecs!
+                        
 
         // Handle nanosecond overflow
         if (next_execution.tv_nsec >= 1000000000L) {
@@ -127,6 +121,9 @@ static void *handling_active_task(void *task)
     return NULL;
 }
 
+/*
+    Given a task find the oldest instance's position 
+*/
 static int find_instance_to_deactivate(ActiveTask *at){
     int min = -1;
     int lowest_instance = INT_MAX;
@@ -147,8 +144,50 @@ static int find_instance_to_deactivate(ActiveTask *at){
 }
 
 
+/* 1. UNLOCKED HELPER: Expects mutex to ALREADY be locked by caller */
+static void rmvclient_unlocked(Client *client) {
+    // close socket, no more connection
+    if (client->socket_fd >= 0) {
+        shutdown(client->socket_fd, SHUT_RDWR); // graceful closure: warn the client that we shut down the read/write conversation with it
+        close(client->socket_fd);
+        client->socket_fd = -1;
+    }
+
+    /* 3. Mark the slot as inactive */
+    client->active = 0;
+    pthread_cond_signal(&roomAvailable);
+    
+    /* Debugging */
+    char s[100];
+    snprintf(
+        s,
+        sizeof(s),
+        "CLOSED CLIENT: cl->%s, port->%d",
+        client->ip,
+        client->port
+    );
+    print_client(s);
+}
+
+
+/* 2. PUBLIC WRAPPER: Locks mutex, calls unlocked helper, unlocks mutex */
+static void rmvclient(Client *client) {
+    pthread_mutex_lock(&mutex);
+    rmvclient_unlocked(client);
+    pthread_mutex_unlock(&mutex);
+}
+
+
 /* Handle an established  connection
-   routine receive is listed in the previous example */
+   routine receive is listed in the previous example.
+   The following cases are possible therefore managed:
+    CMD_HELP: send help message
+    CMD_QUIT: stop the current connection of the current client
+    CMD_STOP: put close_server to 1
+    CMD_ACTIVATE: activate according task
+    CMD_DEACTIVATE: deactivate according task
+    CMD_UNKNOWN: TODO not necessary
+*/
 static void handleConnection(int currSd)
 {
     unsigned int netLen;
@@ -195,6 +234,8 @@ static void handleConnection(int currSd)
                     "       help: print this help\n"
                     "       quit: stop client connection\n"
                     "       stop: force stop server connection\n"
+                    "       a [NUMBER]: activate task [NUMBER]\n"
+                    "       b [NUMBER]: deactivate/block task [NUMBER]\n"
                 );
                 break;
 
@@ -231,13 +272,13 @@ static void handleConnection(int currSd)
                         //     client->port
                         // );
                     
-                    // task NOT SCHEDULABLE:retry
+                    // task NOT SCHEDULABLE
                     print_server("[SCHEDULER] Task rejected: System unschedulable");
                     answer = strdup("TASK_REJECTED: System unschedulable (Deadline miss risk)");
 
                 }
                 else{
-                    // task SCHEDULABLE:add it to active_tasks array!
+                    // task SCHEDULABLE: add it to 'active_tasks' array!
                     int free_pos = add_active_task(&candidate_task);
                     // generate a thread for it
                     if(free_pos == -1){
@@ -252,9 +293,8 @@ static void handleConnection(int currSd)
                         break;
                     }
 
-
                     // Detach thread so resources auto-reclaim on completion
-                    pthread_detach(tasks_active[free_pos].thread_id);   //TODO what is this
+                    pthread_detach(tasks_active[free_pos].thread_id);
 
                     char buf[128];
                     snprintf(buf, sizeof(buf), "TASK %d ACTIVATED in slot %d", task_number, free_pos);
@@ -273,10 +313,10 @@ static void handleConnection(int currSd)
                 }
                 candidate_task.task_id = task_number;
                 candidate_task.client_owner_fd = currSd;
+               
                 // must disable the thread
                     // associated to this task
-                        // by that client
-                            // the lowest instance (first one that arrived)
+                        // the lowest instance (first one that arrived)
                 // how? by setting that activetask in tasks_active to NOT active
                 pthread_mutex_lock(&active_tasks_mutex);
 
@@ -285,30 +325,28 @@ static void handleConnection(int currSd)
                 int pos = find_instance_to_deactivate(&candidate_task);
                 if (pos == -1) {
                     pthread_mutex_unlock(&active_tasks_mutex);
-                    print_server_error("ERROR handleConnection(): find_instance_to_deactivate");
+                    print_server_error("ERROR handleConnection(): NO INSTANCE TO DEACTIVATE");
                     answer = strdup("ERROR task not active");
                     break;
                 }
-                tasks_active[pos].active = 0;
+                tasks_active[pos].active = 0;   // immediately set it to not active, make it exit
+                                                // from the loop in handling_active_task()
                 pthread_mutex_unlock(&active_tasks_mutex);
 
                 answer = strdup("task DEACTIVATED");
                 break;
             
-            case CMD_UNKNOWN:
+            case CMD_UNKNOWN: // TODO necessary?
             default:
                 answer = strdup("invalid command (try help).");
                 break;
-                
         }
         
-            
         if (!answer) {
             print_server_error("Memory allocation failed in strdup");
             free(command);
             break;
         }
-
 
         /* we must send 'ans' to Client */
         len = strlen(answer);
@@ -340,41 +378,10 @@ static void handleConnection(int currSd)
     
 }
 
-/* 1. UNLOCKED HELPER: Expects mutex to ALREADY be locked by caller */
-static void rmvclient_unlocked(Client *client) {
-    // close socket, no more connection
-    if (client->socket_fd >= 0) {
-        shutdown(client->socket_fd, SHUT_RDWR);
-        close(client->socket_fd);
-        client->socket_fd = -1;
-    }
 
-    /* 3. Mark the slot as inactive */
-    client->active = 0;
-    pthread_cond_signal(&roomAvailable);
-    
-    /* Debugging */
-    char s[100];
-    snprintf(
-        s,
-        sizeof(s),
-        "CLOSED CLIENT: cl->%s, port->%d",
-        client->ip,
-        client->port
-    );
-    print_client(s);
-}
-
-
-/* 2. PUBLIC WRAPPER: Locks mutex, calls unlocked helper, unlocks mutex */
-static void rmvclient(Client *client) {
-    pthread_mutex_lock(&mutex);
-    rmvclient_unlocked(client);
-    pthread_mutex_unlock(&mutex);
-}
-
-
-/* Thread routine. It calls routine handleConnection() */
+/* Thread routine. Calls routine handleConnection() to handle current client
+   [ENDING] remove current client from clients array
+*/
 static void *connectionHandler(void *client)
 {
     Client *c = (Client*)client; // make it a 'Client' object
@@ -385,7 +392,8 @@ static void *connectionHandler(void *client)
     return NULL;
 }
 
-/* Searches for the first index where active == 0.
+
+/* Searches for the first index in 'clients' where active == 0.
    Returns the slot index if found, or -1 if the server is full. */
 static int findFreePosition(void) {
     for (int i = 0; i < MAX_THREADS; i++) {
@@ -397,7 +405,8 @@ static int findFreePosition(void) {
 }
 
 /*
-    Add a client to our buffer 'clients'.
+    Add a client to our buffer 'clients', then create a separate thread
+    for it which will be managed by connectionHandler()
 */
 static void addclient(int current_socket, struct sockaddr_in *retSin)
 {
@@ -456,6 +465,11 @@ static void addclient(int current_socket, struct sockaddr_in *retSin)
     print_client(s);
 }
 
+
+/*
+At the end of the program, before closing, the server sends to each
+active client a SHUTDOWN message.
+*/
 static void closing_broadcast_to_clients(){
     pthread_mutex_lock(&mutex);
     
@@ -467,6 +481,7 @@ static void closing_broadcast_to_clients(){
     for(int i = 0; i < MAX_THREADS; i++){
         Client *current_client = &clients[i];
 
+        // if the client is NOT active go to the next
         if(current_client->active == 0)
             continue;
 
@@ -495,8 +510,6 @@ static void init_client(Client *c){
     c->port = 0;
     c->position = 0;
     c->ip[0] = '\0';
-    c->ntasks = 0;
-    c->satisfied = 0;
     c->socket_fd = -1;
     c->thread_id = 0;
 }
@@ -539,7 +552,7 @@ int main(int argc, char *argv[]){
     // then i wait till i receive all the traffic. ALSO even if
     // i close this socket create a new one on this port anyway
     int reuse = 1;
-    if(setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0)
+    if(setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0)  //TODO
         print_server_error("setsockopt(SO_REUSEADDR) failed");
 
     /* Initialize the address (struct sokaddr_in) fields */

@@ -148,6 +148,8 @@ int main(int argc, char **argv)
     }
 
     print_client("Enter command: \n");
+
+
     while(1)
     {
         fd_set read_fds;
@@ -166,10 +168,10 @@ int main(int argc, char **argv)
         }
         
 
-        //1) activity detected: server answered! or...
+        //1) activity detected: server answered!
         if(FD_ISSET(client_socket, &read_fds)){
-            if(handle_server_answer(client_socket) < 0)
-                break;
+            if(handle_server_answer(client_socket) == -1)  // SERVER ANS: server stopped or it closed our client...
+                break;    
             print_client("enter command: request task {1-4}");
             fflush(stdout);
         }
@@ -191,7 +193,7 @@ int main(int argc, char **argv)
                 print_client_warning("Invalid choice! Enter a/b 1-4 for tasks or 'help', 'quit', 'stop'.");
                 continue; // Don't send anything to server, prompt again
             }
-            
+
             const char *command = format_server_payload(cmd);
             // send command lenght
             len = strlen(command);

@@ -1,11 +1,10 @@
 
 #include "headers/task.h"
 
-/* REAL DEFINITIONS: Allocated exactly once here */
 ActiveTask tasks_active[MAX_NUMBER_ACTIVE_TASKS];
 pthread_mutex_t active_tasks_mutex = PTHREAD_MUTEX_INITIALIZER;
-sem_t free_slots_sem;
-static int next_instance_id = 0;
+sem_t free_slots_sem;               // is there space in our 'tasks_active' array?
+static int next_instance_id = 0;    // to have a 'time history' of the tasks
 
 static void run_task1_unlocked(void) {
     printf("task 1 activated\n");
@@ -66,25 +65,26 @@ void init_active_tasks(){
 
 int find_free_pos_in_tasksactive(){
     for(int i = 0; i < MAX_NUMBER_ACTIVE_TASKS; i++){
-        if(tasks_active[i].active == 0){
+        if(tasks_active[i].active == 0)
             return i;
-        }
     }
     return -1;
 }
 
+/* 
+add new task into 'active_tasks' array.
+[Return] position where the task is stored.
+*/
 int add_active_task(ActiveTask *new_task){
     sem_wait(&free_slots_sem);  // is there space for a new task?
     pthread_mutex_lock(&active_tasks_mutex);
     
     int free_pos = find_free_pos_in_tasksactive(); // there must be since free_slots_sem > 1
     if (free_pos == -1) {
-        // TASKS ACTIVE FULL! must not be possible
         pthread_mutex_unlock(&active_tasks_mutex);
         sem_post(&free_slots_sem);
         return -1;
     }
-
 
     ActiveTask *task = &tasks_active[free_pos];
     task->active = 1;
@@ -110,23 +110,3 @@ void remove_active_task(int position){
     pthread_mutex_unlock(&active_tasks_mutex);
     sem_post(&free_slots_sem);
 }
-
-
-
-// int main(int argc, char **argv) {
-//     if (argc < 2) {
-//         printf("Usage: %s <task_number 1-4>\n", argv[0]);
-//         return 1;
-//     }
-
-//     int choice = atoi(argv[1]);
-//     switch (choice) {
-//         case 1: task1(); break;
-//         case 2: task2(); break;
-//         case 3: task3(); break;
-//         case 4: task4(); break;
-//         default: printf("Invalid choice\n"); return 1;
-//     }
-
-//     return 0;
-// }

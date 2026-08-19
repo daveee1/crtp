@@ -1,0 +1,8 @@
+\begin{frame}{Problem Statement: The Real-Time Challenge}
+    \begin{itemize}
+        \item \textbf{Objective:} Simulate a system of periodic tasks with strict timing constraints: Execution Time ($C_i$), Period ($P_i$), and Deadline ($D_i$).
+        \item \textbf{The Constraint:} In a hard real-time context, adding a new task to a running system is not guaranteed to be safe.
+        \item \textbf{Dynamic Environment:} The system must respond to asynchronous client requests to activate or deactivate tasks via a TCP/IP interface.
+        \item \textbf{Mathematical Necessity:} Before any task activation, the supervisor must prove that the current task set remains \textit{schedulable} under Rate Monotonic assumptions.
+    \end{itemize}
+\end{frame}

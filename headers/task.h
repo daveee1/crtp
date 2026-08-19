@@ -23,8 +23,7 @@ typedef struct {
     int instance_id;     // Unique identifier (e.g., slot index + 1)
     int active;          // 1 if running, 0 if free slot
     int client_owner_fd; // Socket FD of the client that owns this thread
-    Task task;       // Copy of (or pointer to) static task parameters
-    pthread_t thread_id; // Thread handle for cancellation/joining
+    pthread_t thread_id; // Thread handle for cancellation/detach
 }ActiveTask;
 
 /* Task catalog declaration (defined in task.c) */
