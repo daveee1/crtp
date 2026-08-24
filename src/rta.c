@@ -52,7 +52,7 @@ static int utilization_factor(ActiveTask new_active_task) {
     necessary to sort tasks in increasing order of periods
     to find highest priority's tasks.
 */
-int compare_rms_priority(const void *a, const void *b) {
+static int compare_rms_priority(const void *a, const void *b) {
     const SchedTask *taskA = (const SchedTask *)a;
     const SchedTask *taskB = (const SchedTask *)b;
     // Smaller period = higher priority in Rate Monotonic

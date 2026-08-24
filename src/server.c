@@ -2,16 +2,6 @@
 
 #define MAX_THREADS 5
 
-typedef struct {
-    int socket_fd;
-    int position; // id in the buffer
-    int satisfied;  // were all its tasks managed? 1 yes, 0 no
-    int ntasks;
-    char ip[16];
-    int port;
-    pthread_t thread_id; // will be filled automatically by pthread_create()
-    int active;               /* 1 if connected, 0 if disconnected */
-} Client;
 
 // our clients's buffer
 Client clients[MAX_THREADS];
@@ -111,7 +101,7 @@ static void *handling_active_task(void *task)
         }
 
         /* 3. Sleep until absolute next activation time */
-        clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next_execution, NULL);
+        clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next_execution, NULL);     // TODO to test
     }
 
     remove_active_task(pos);
@@ -175,6 +165,29 @@ static void rmvclient(Client *client) {
     pthread_mutex_unlock(&mutex);
 }
 
+static void print_active_tasks(void) {
+    printf("\n+---+------------------+-----------------+\n");
+    printf("| Slot| Client Port      | Worker Thread ID|\n");
+    printf("\n+---+------------------+-----------------+\n");
+
+    int count = 0;
+    for (int i = 0; i < MAX_NUMBER_ACTIVE_TASKS; i++) {
+        if (tasks_active[i].active == 1) {
+            printf("| %-3d | Port :%-10d |ThreadID: %d\n",
+                   i,
+                   tasks_active[i].client_port, 
+                   tasks_active[i].instance_id);
+            count++;
+        }
+    }
+
+    if (count == 0) {
+        printf("|       --- No Active Tasks Running ---        |\n");
+    }
+    printf("\n+---+------------------+-----------------+\n");
+    printf(" Total Active Tasks: %d / %d\n\n", count, MAX_NUMBER_ACTIVE_TASKS);
+}
+
 
 /* Handle an established  connection
    routine receive is listed in the previous example.
@@ -185,13 +198,14 @@ static void rmvclient(Client *client) {
     CMD_ACTIVATE: activate according task
     CMD_DEACTIVATE: deactivate according task
 */
-static void handleConnection(int currSd)
+static void handleConnection(Client *c)
 {
     unsigned int netLen;
     int len;
     char *command, *answer;
     int quit = 0; // close current client
     int task_number = -1;
+    int currSd = c->socket_fd;
     ActiveTask candidate_task;
     
     while(1)
@@ -266,20 +280,15 @@ static void handleConnection(int currSd)
                 // declare new task to be potentially added
                 candidate_task.task_id = task_number;
                 candidate_task.client_owner_fd = currSd;
+                candidate_task.client_port = c->port;
 
                 if(is_schedulable(candidate_task) == -1){
-                    // snprintf(
-                        //     s,
-                        //     sizeof(s),
-                        //     "CLOSED CLIENT: cl->%s, port->%d",
-                        //     client->ip,
-                        //     client->port
-                        // );
-                    
                     // task NOT SCHEDULABLE
-                    print_server("[SCHEDULER] Task rejected: System unschedulable");
-                    answer = strdup("TASK_REJECTED: System unschedulable (Deadline miss risk)");
+                    char buf[128];
+                    snprintf(buf, sizeof(buf), "[CLIENT %d] TASK %d NOT SCHEDULABLE", c->port, task_number);
+                    print_server(buf);
 
+                    answer = strdup("TASK_REJECTED: System unschedulable (Deadline miss risk)");
                 }
                 else{
                     // task SCHEDULABLE: add it to 'active_tasks' array!
@@ -301,10 +310,11 @@ static void handleConnection(int currSd)
                     pthread_detach(tasks_active[free_pos].thread_id);
 
                     char buf[128];
-                    snprintf(buf, sizeof(buf), "TASK %d ACTIVATED in slot %d", task_number, free_pos);
+                    snprintf(buf, sizeof(buf), "[CLIENT %d] TASK %d ACTIVATED in slot %d", c->port, task_number, free_pos);
                     print_server(buf);
                     
                     answer = strdup("TASK_ACTIVATED");
+                    print_active_tasks();
                 }
                 break;
             
@@ -317,6 +327,7 @@ static void handleConnection(int currSd)
                 }
                 candidate_task.task_id = task_number;
                 candidate_task.client_owner_fd = currSd;
+                candidate_task.client_port = c->port;
                
                 // must disable the thread
                     // associated to this task
@@ -337,7 +348,12 @@ static void handleConnection(int currSd)
                                                 // from the loop in handling_active_task()
                 pthread_mutex_unlock(&active_tasks_mutex);
 
+                char buf[128];
+                snprintf(buf, sizeof(buf), "[CLIENT %d] TASK %d DEACTIVATED in slot %d", c->port, task_number, pos);
+                print_server(buf);
                 answer = strdup("task DEACTIVATED");
+                print_active_tasks();
+
                 break;
         }
         
@@ -384,7 +400,7 @@ static void handleConnection(int currSd)
 static void *connectionHandler(void *client)
 {
     Client *c = (Client*)client; // make it a 'Client' object
-    handleConnection(c->socket_fd);
+    handleConnection(c);
 
     rmvclient(c);
 
@@ -437,7 +453,7 @@ static void addclient(int current_socket, struct sockaddr_in *retSin)
     
     /* Create thread for this client */
     if (pthread_create(
-            &client->thread_id,
+            &client->thread,
             NULL,
             connectionHandler,
             client
@@ -457,7 +473,7 @@ static void addclient(int current_socket, struct sockaddr_in *retSin)
     snprintf(
         s,
         sizeof(s),
-        "NEW CLIENT: cl->%s, port->%d",
+        "NEW CLIENT: ip->%s, port->%d",
         client->ip,
         client->port
     );
@@ -510,7 +526,7 @@ static void init_client(Client *c){
     c->position = 0;
     c->ip[0] = '\0';
     c->socket_fd = -1;
-    c->thread_id = 0;
+    c->thread = 0;
 }
 
 static void init_clients_buffer(){

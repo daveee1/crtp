@@ -23,6 +23,7 @@ typedef struct {
     int instance_id;     // Unique identifier (e.g., slot index + 1)
     int active;          // 1 if running, 0 if free slot
     int client_owner_fd; // Socket FD of the client that owns this thread
+    int client_port;
     pthread_t thread_id; // Thread handle for cancellation/detach
 }ActiveTask;
 

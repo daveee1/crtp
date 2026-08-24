@@ -1,25 +1,29 @@
 TODO 
-    
-    SERVER
+    verbose option?
 
-        why unschedulable? tell why to the client
+    do i need roomAvailable semaphore?
 
-        // eliminate useless variables
-
-        [SERVER ERROR] receive failed before command
-            currSd value was: 7
-
-            
-    RTA
-        comparison by EPISLON between response_prev vs response_time
-
-        deadline field necessary?
-        
-        
-
-    CLIENT
-        [CLIENT ERROR] Failed to receive full message from server.
+    for print_server do i need a pointer to the string or a copy of str
 
 
-    PRESENTATION
-        exploit unsloth drag everything
+    [SERVER] receive failed before command: client exited
+    [SERVER] currSd value was: 4
+
+    LOG
+        - put printf state of the queue after activating or
+            deactivating a task
+        - show mutex value?
+        - threads for client and task
+        - GEMINI
+            [CLIENT 192.168.1.10:45210] REQUEST: ACTIVATE
+                         'task: 4'
+            [SERVER] RTA check passed. Worker Thread #4
+             created for task 'filter_task' by Client 12.
+        -port not correct
+
+
+
+
+
+HEADERS
+    what to put in them?

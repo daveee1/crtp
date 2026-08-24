@@ -91,6 +91,7 @@ int add_active_task(ActiveTask *new_task){
     task->task_id = new_task->task_id;
     task->position = free_pos;
     task->client_owner_fd = new_task->client_owner_fd;
+    task->client_port = new_task->client_port;
     task->instance_id = next_instance_id++;  
     
     pthread_mutex_unlock(&active_tasks_mutex);

@@ -8,17 +8,22 @@
 #include <netinet/in.h>   /* Provides struct sockaddr_in, htons(), ntohs() */
 #include <arpa/inet.h>    /* Provides inet_ntop(), inet_pton() */
 
-
+// server
 #define COLOR_RED   "\033[1;31m"
+#define COLOR_YELLOW "\033[1;33m" 
+#define COLOR_ORANGE     "\033[38;5;208m" /* 256-color Extended ANSI Orange */
+
+// client
 #define COLOR_BLUE  "\033[1;34m"
 #define COLOR_LIGHT_BLUE "\033[1;36m"  /* Bright Cyan / Light Blue */
 #define COLOR_PURPLE     "\033[1;35m"  /* Bright Magenta / Purple */
-#define COLOR_ORANGE     "\033[38;5;208m" /* 256-color Extended ANSI Orange */
+
 #define COLOR_RESET "\033[0m"
 
 // #define COLOR_LIGHT_GREEN  "\033[1;32m" 
-#define COLOR_YELLOW "\033[1;33m" 
 #define COLOR_LIGHT_GREEN "\033[1;32m" 
+#define COLOR_LIGHT_GREEN "\033[1;32m" 
+// #define COLOR_CYAN "\033[0;36m" // print active tasks
 
 
 void print_server_error(const char *error);

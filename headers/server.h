@@ -16,4 +16,17 @@
 #include <pthread.h>
 #include <errno.h> 
 
-static void handleConnection(int currSd);
+
+
+typedef struct {
+    int socket_fd;
+    int position; // id in the buffer
+    int satisfied;  // were all its tasks managed? 1 yes, 0 no
+    int ntasks;
+    char ip[16];
+    int port;
+    pthread_t thread; // will be filled automatically by pthread_create()
+    int active;               /* 1 if connected, 0 if disconnected */
+} Client;
+
+static void handleConnection(Client *c);
