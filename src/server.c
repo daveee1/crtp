@@ -167,15 +167,16 @@ static void rmvclient(Client *client) {
 
 static void print_active_tasks(void) {
     printf("\n+---+------------------+-----------------+\n");
-    printf("| Slot| Client Port      | Worker Thread ID|\n");
+    printf("| Slot| Client Port      |  TASK_ID  | Worker Thread ID |\n");
     printf("\n+---+------------------+-----------------+\n");
 
     int count = 0;
     for (int i = 0; i < MAX_NUMBER_ACTIVE_TASKS; i++) {
         if (tasks_active[i].active == 1) {
-            printf("| %-3d | Port :%-10d |ThreadID: %d\n",
+            printf("|  %d  | Port: %-10d | Task: %d  | ThreadID: %d\n",
                    i,
                    tasks_active[i].client_port, 
+                   tasks_active[i].task_id, 
                    tasks_active[i].instance_id);
             count++;
         }
