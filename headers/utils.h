@@ -1,6 +1,11 @@
 #ifndef UTILS_H    /* 1. Is UTILS_H NOT defined yet? */
 #define UTILS_H    /* 2. OK, define UTILS_H now! */
 
+
+extern int verbose;
+
+
+
 #include <stdio.h>
 #include <sys/select.h>
 #include <sys/time.h>
@@ -38,7 +43,6 @@ void print_analysis(const char *s);
 
 
 int receive(int sd, char *retBuf, int size);
-
 
 
 #endif             /* 3. End of guard */

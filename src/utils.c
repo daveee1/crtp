@@ -3,7 +3,8 @@
 
 /* Red error output for Server */
 void print_server_error(const char *error) {
-    fprintf(stderr, "%s[SERVER ERROR] %s%s\n", COLOR_RED, error, COLOR_RESET);
+    if(verbose)
+        fprintf(stderr, "%s[SERVER ERROR] %s%s\n", COLOR_RED, error, COLOR_RESET);
 }
 void print_server(const char *s) {
     printf("%s[SERVER] %s%s\n", COLOR_ORANGE, s, COLOR_RESET);

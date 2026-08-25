@@ -3,9 +3,11 @@
 #define MAX_THREADS 5
 
 
+/* Real definition: allocates memory for 'verbose' */
+int verbose = 0;
+
 // our clients's buffer
 Client clients[MAX_THREADS];
-
 
 // global variable: if a client wants to close the server
 int close_server = 0;
@@ -13,9 +15,8 @@ int close_server = 0;
 // SEMAPHOREES
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutexstopserver = PTHREAD_MUTEX_INITIALIZER;  // necessary to overwrite correcly variable close_server
-// roomAvailable when there is space in the buffer, dataAvailable when buffer has clients already in it
+// roomAvailable when there is space in the buffer when buffer has clients already in it
 pthread_cond_t roomAvailable = PTHREAD_COND_INITIALIZER;
-pthread_cond_t dataAvailable = PTHREAD_COND_INITIALIZER;
 
 
 
@@ -49,7 +50,7 @@ static int parse_task_number(const char *command) {
     return -1; // Return -1 if parsing failed
 }
 
-
+// TODO explain better
 /* Thread routine. It calls routine handleConnection() */
 static void *handling_active_task(void *task)
 {
@@ -166,14 +167,14 @@ static void rmvclient(Client *client) {
 }
 
 static void print_active_tasks(void) {
-    printf("\n+---+------------------+-----------------+\n");
-    printf("| Slot| Client Port      |  TASK_ID  | Worker Thread ID |\n");
-    printf("\n+---+------------------+-----------------+\n");
+    printf("\n+---+------------------+---------+------------------+\n");
+    printf("| Slot| Client Port      | TASK_ID | Worker Thread ID |\n");
+    printf("\n+---+------------------+---------+------------------+\n");
 
     int count = 0;
     for (int i = 0; i < MAX_NUMBER_ACTIVE_TASKS; i++) {
         if (tasks_active[i].active == 1) {
-            printf("|  %d  | Port: %-10d | Task: %d  | ThreadID: %d\n",
+            printf("|  %d  | Port: %-10d | Task: %d  | ThreadID: %d|\n",
                    i,
                    tasks_active[i].client_port, 
                    tasks_active[i].task_id, 
@@ -185,7 +186,7 @@ static void print_active_tasks(void) {
     if (count == 0) {
         printf("|       --- No Active Tasks Running ---        |\n");
     }
-    printf("\n+---+------------------+-----------------+\n");
+    printf("\n+---+------------------+---------+------------------+\n");
     printf(" Total Active Tasks: %d / %d\n\n", count, MAX_NUMBER_ACTIVE_TASKS);
 }
 
@@ -550,13 +551,27 @@ int main(int argc, char *argv[]){
 
     pthread_t threads[MAX_THREADS];
 
-    if(argc < 2){
-        print_server_error("[SERVER] ERROR not enough arguments: specify PORT");
-        exit(-1);
+    if (argc < 3) {
+        print_server_error("[SERVER] ERROR: Not enough arguments. Usage: ./server <PORT> <VERBOSE>");
+        exit(EXIT_FAILURE);
     }
 
-    sscanf(argv[1], "%d", &server_port);
-    
+    // Parse PORT (argv[1])
+    if (sscanf(argv[1], "%d", &server_port) != 1 || server_port <= 0 || server_port > 65535) {
+        print_server_error("[SERVER] ERROR: Invalid port number");
+        exit(EXIT_FAILURE);
+    }
+
+    // Parse VERBOSE (argv[2])
+    if (sscanf(argv[2], "%d", &verbose) == 1 && (verbose >= 0 )) {
+        char s[80];
+        snprintf(s, sizeof(s), "Verbose set to %d", verbose);
+        print_server(s);
+    } 
+    else 
+        print_server("[SERVER] Invalid verbose input, defaulting to 0\n");
+
+
     if((server_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1){
         print_server_error("socket not correct");
         exit(-1);
@@ -647,7 +662,6 @@ int main(int argc, char *argv[]){
     pthread_mutex_destroy(&mutex);
     pthread_mutex_destroy(&mutexstopserver);
     pthread_cond_destroy(&roomAvailable);
-    pthread_cond_destroy(&dataAvailable);
     pthread_mutex_destroy(&active_tasks_mutex);
     sem_destroy(&free_slots_sem);
     
