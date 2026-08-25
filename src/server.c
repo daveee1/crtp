@@ -128,7 +128,7 @@ static void *handling_active_task(void *task)
         clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next_execution, NULL);     // TODO to test
     }
 
-    remove_active_task(t);
+    //remove_active_task(t, pos);
 
     return NULL;
 }
@@ -321,7 +321,7 @@ static void handleConnection(Client *c)
                 candidate_task.client_owner_fd = currSd;
                 candidate_task.client_port = c->port;
 
-                int pos = remove_active_task(&candidate_task);
+                int pos = find_and_remove_active_task(&candidate_task);
                 if (pos == -1) {
                     answer = strdup("ERROR task not active");
                     print_server_error("ERROR handleConnection(): NO INSTANCE TO DEACTIVATE");

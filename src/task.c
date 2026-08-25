@@ -130,14 +130,14 @@ must disable the thread associated to this task,
 in particular the lowest instance (first one that arrived).
 How? by setting that activetask in tasks_active to NOT active
 */
-int remove_active_task(ActiveTask *at){
-    print_server("[tasks_active MUTEX] cl %d WAITING to remove task %d", 
+int find_and_remove_active_task(ActiveTask *at){
+    print_server("[tasks_active MUTEX] cl %d WAITING to find and remove task %d", 
         at->client_port,
         at->task_id);
 
     pthread_mutex_lock(&active_tasks_mutex);
     
-    print_server("[tasks_active MUTEX] cl %d ACQUIRED to remove task %d", 
+    print_server("[tasks_active MUTEX] cl %d ACQUIRED to find and remove task %d", 
         at->client_port,
         at->task_id);
 
@@ -159,9 +159,32 @@ int remove_active_task(ActiveTask *at){
     task->thread_id = -1;  
     
     pthread_mutex_unlock(&active_tasks_mutex);
-    print_server("[tasks_active MUTEX] cl %d RELEASED to remove task %d", 
+    print_server("[tasks_active MUTEX] cl %d RELEASED to find and remove task %d", 
         at->client_port,
         at->task_id);
     sem_post(&free_slots_sem);
     return 1;
+}
+
+int remove_active_task(ActiveTask *at, int pos){
+    print_server("[tasks_active MUTEX] cl %d WAITING to remove task %d", 
+        at->client_port,
+        at->task_id);
+    pthread_mutex_lock(&active_tasks_mutex);
+    print_server("[tasks_active MUTEX] cl %d ACQUIRED to remove task %d", 
+        at->client_port,
+        at->task_id);
+
+    ActiveTask *task = &tasks_active[pos];
+    task->active = 0;
+    task->instance_id = -1;
+    task->client_owner_fd = -1;
+    task->task_id = -1;
+    task->thread_id = -1;
+
+    pthread_mutex_unlock(&active_tasks_mutex);
+    print_server("[tasks_active MUTEX] cl %d RELEASED to remove task %d", 
+        at->client_port,
+        at->task_id);
+    sem_post(&free_slots_sem);
 }
