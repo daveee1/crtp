@@ -166,25 +166,25 @@ int find_and_remove_active_task(ActiveTask *at){
     return 1;
 }
 
-int remove_active_task(ActiveTask *at, int pos){
-    print_server("[tasks_active MUTEX] cl %d WAITING to remove task %d", 
-        at->client_port,
-        at->task_id);
-    pthread_mutex_lock(&active_tasks_mutex);
-    print_server("[tasks_active MUTEX] cl %d ACQUIRED to remove task %d", 
-        at->client_port,
-        at->task_id);
+// int remove_active_task(ActiveTask *at, int pos){
+//     print_server("[tasks_active MUTEX] cl %d WAITING to remove task %d", 
+//         at->client_port,
+//         at->task_id);
+//     pthread_mutex_lock(&active_tasks_mutex);
+//     print_server("[tasks_active MUTEX] cl %d ACQUIRED to remove task %d", 
+//         at->client_port,
+//         at->task_id);
 
-    ActiveTask *task = &tasks_active[pos];
-    task->active = 0;
-    task->instance_id = -1;
-    task->client_owner_fd = -1;
-    task->task_id = -1;
-    task->thread_id = -1;
+//     ActiveTask *task = &tasks_active[pos];
+//     task->active = 0;
+//     task->instance_id = -1;
+//     task->client_owner_fd = -1;
+//     task->task_id = -1;
+//     task->thread_id = -1;
 
-    pthread_mutex_unlock(&active_tasks_mutex);
-    print_server("[tasks_active MUTEX] cl %d RELEASED to remove task %d", 
-        at->client_port,
-        at->task_id);
-    sem_post(&free_slots_sem);
-}
+//     pthread_mutex_unlock(&active_tasks_mutex);
+//     print_server("[tasks_active MUTEX] cl %d RELEASED to remove task %d", 
+//         at->client_port,
+//         at->task_id);
+//     sem_post(&free_slots_sem);
+// }
