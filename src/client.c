@@ -77,7 +77,7 @@ static ClientCmdType parse_user_input(const char *input) {
     else if (!strcmp(input, "b 3") || !strcmp(input, "block 3")) return CLIENT_CMD_DEACTIVATE_TASK3;
     else if (!strcmp(input, "b 4") || !strcmp(input, "block 4")) return CLIENT_CMD_DEACTIVATE_TASK4;
     else if (!strcmp(input, "help")) return CLIENT_CMD_HELP;
-    else if (!strcmp(input, "quit")) return CLIENT_CMD_QUIT;
+    else if (!strcmp(input, "quit") || !strcmp(input, "exit")) return CLIENT_CMD_QUIT;
     else if (!strcmp(input, "stop")) return CLIENT_CMD_STOP;
     return CLIENT_CMD_INVALID;
 }
@@ -119,10 +119,11 @@ int main(int argc, char **argv)
     unsigned int netLen;
     struct sockaddr_in sin;
     struct hostent *hp;
+
     /* Check number of arguments and get IP address, port and verbose flags*/
     if (argc < 4)
     {
-        print_client_error("Usge: <ip_hostname> <port> <verbose>\n");
+        print_client_error("Usage: <ip_hostname> <port> <verbose>\n");
         exit(0);
     }
 
@@ -139,14 +140,10 @@ int main(int argc, char **argv)
     }
 
     // Parse VERBOSE 
-    if (sscanf(argv[3], "%d", &verbose) == 1 && (verbose > 0 )) {
-        char s[80];
-        snprintf(s, sizeof(s), "Verbose set to %d", verbose);
-        print_client(s);
-    } 
+    if (sscanf(argv[3], "%d", &verbose) == 1 && (verbose > 0 ))
+        print_client("Verbose set to %d", verbose);
     else 
         print_client("[SERVER] Invalid verbose input, defaulting to 0\n");
-
 
 
 
@@ -181,7 +178,6 @@ int main(int argc, char **argv)
 
     print_client("Enter command: \n");
 
-
     while(1)
     {
         fd_set read_fds;
@@ -211,6 +207,7 @@ int main(int argc, char **argv)
         //2) input by user detected
         if(FD_ISSET(STDIN_FILENO, &read_fds) > 0){
             char input[50];
+
             if (fgets(input, sizeof(input), stdin) == NULL){
                 print_client_error("fgets()");
                 exit(1);
@@ -238,7 +235,6 @@ int main(int argc, char **argv)
                 print_client_error("SENDing command to server");
                 break;
             }
-
         }
 
     }

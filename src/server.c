@@ -125,7 +125,7 @@ static void *handling_active_task(void *task)
         }
 
         /* 3. Sleep until absolute next activation time */
-        clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next_execution, NULL);     // TODO to test
+        clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next_execution, NULL);
     }
 
     //remove_active_task(t, pos);
@@ -323,8 +323,8 @@ static void handleConnection(Client *c)
 
                 int pos = find_and_remove_active_task(&candidate_task);
                 if (pos == -1) {
-                    answer = strdup("ERROR task not active");
-                    print_server_error("ERROR handleConnection(): NO INSTANCE TO DEACTIVATE");
+                    answer = strdup("WRONG task NOT active");
+                    print_server_warning("NO INSTANCE TO DEACTIVATE");
                     break;
                 }
 
@@ -414,7 +414,7 @@ static void addclient(int current_socket, struct sockaddr_in *retSin)
     int free_position = findFreePosition();
 
     while (free_position == -1) {
-        print_server_error("Max capacity reached. Waiting for space...\n");
+        print_server_warning("Max capacity reached. Waiting for space...\n");
         pthread_cond_wait(&roomAvailable, &mutex);
         free_position = findFreePosition();
     }

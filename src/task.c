@@ -84,6 +84,7 @@ int add_active_task(ActiveTask *new_task){
     int free_pos = find_free_pos_in_tasksactive(); // there must be since free_slots_sem > 1
     if (free_pos == -1) {
         pthread_mutex_unlock(&active_tasks_mutex);
+        print_server("[tasks_active MUTEX] cl %d RELEASED", new_task->client_port);
         sem_post(&free_slots_sem);
         return -1;
     }
@@ -148,6 +149,7 @@ int find_and_remove_active_task(ActiveTask *at){
     if (pos == -1) {
         // no istance to deactivate
         pthread_mutex_unlock(&active_tasks_mutex);
+        print_server("[tasks_active MUTEX] cl %d RELEASED: NO instance to deactivate"); 
         return -1;
     }
 
@@ -166,25 +168,3 @@ int find_and_remove_active_task(ActiveTask *at){
     return 1;
 }
 
-// int remove_active_task(ActiveTask *at, int pos){
-//     print_server("[tasks_active MUTEX] cl %d WAITING to remove task %d", 
-//         at->client_port,
-//         at->task_id);
-//     pthread_mutex_lock(&active_tasks_mutex);
-//     print_server("[tasks_active MUTEX] cl %d ACQUIRED to remove task %d", 
-//         at->client_port,
-//         at->task_id);
-
-//     ActiveTask *task = &tasks_active[pos];
-//     task->active = 0;
-//     task->instance_id = -1;
-//     task->client_owner_fd = -1;
-//     task->task_id = -1;
-//     task->thread_id = -1;
-
-//     pthread_mutex_unlock(&active_tasks_mutex);
-//     print_server("[tasks_active MUTEX] cl %d RELEASED to remove task %d", 
-//         at->client_port,
-//         at->task_id);
-//     sem_post(&free_slots_sem);
-// }

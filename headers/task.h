@@ -38,7 +38,6 @@ extern sem_t free_slots_sem;
 
 int add_active_task(ActiveTask *new_task);
 int find_and_remove_active_task(ActiveTask *at);
-// int remove_active_task(ActiveTask *at, int pos);
 void init_active_tasks();
 int find_free_pos_in_tasksactive();
 

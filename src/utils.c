@@ -12,7 +12,7 @@ void print_server_error(const char *format, ...) {
     if (verbose < 0 || format == NULL) return;
 
     // 2. Print prefix with colors
-    printf("%s[SERVER] ", COLOR_RED);
+    printf("%s[SERVER ERROR] ", COLOR_RED);
 
     // 3. Process formatted parameters directly
     va_list args;
@@ -29,7 +29,7 @@ void print_server_warning(const char *format, ...) {
     if (verbose < 1 || format == NULL) return;
     
     // 2. Print prefix with colors
-    printf("%s[SERVER] ", COLOR_YELLOW);
+    printf("%s[SERVER WARNING] ", COLOR_YELLOW);
 
     // 3. Process formatted parameters directly
     va_list args;
@@ -68,7 +68,7 @@ void print_client(const char *format, ...) {
     if (verbose < 2 || format == NULL) return;
 
     // 2. Print prefix with colors
-    printf("%s[SERVER] ", COLOR_LIGHT_BLUE);
+    printf("%s[CLIENT] ", COLOR_LIGHT_BLUE);
 
     // 3. Process formatted parameters directly
     va_list args;
@@ -86,7 +86,7 @@ void print_client_warning(const char *format, ...) {
     if (verbose < 2 || format == NULL) return;
 
     // 2. Print prefix with colors
-    printf("%s[SERVER] ", COLOR_PURPLE);
+    printf("%s[CLIENT WARNING] ", COLOR_PURPLE);
 
     // 3. Process formatted parameters directly
     va_list args;
@@ -103,7 +103,7 @@ void print_client_error(const char *format, ...) {
     if (verbose < 0 || format == NULL) return;
 
     // 2. Print prefix with colors
-    printf("%s[SERVER] ", COLOR_BLUE);
+    printf("%s[CLIENT ERROR] ", COLOR_BLUE);
 
     // 3. Process formatted parameters directly
     va_list args;
@@ -122,7 +122,7 @@ void print_analysis(const char *format, ...) {
     if (verbose < 2 || format == NULL) return;
 
     // 2. Print prefix with colors
-    printf("%s[SERVER] ", COLOR_LIGHT_GREEN);
+    printf("%s[ANALYSIS] ", COLOR_LIGHT_GREEN);
 
     // 3. Process formatted parameters directly
     va_list args;
@@ -133,9 +133,8 @@ void print_analysis(const char *format, ...) {
     // 4. Reset colors and newline
     printf("%s\n", COLOR_RESET);
 }
-// void print_cyan(const char *s) {
-//     printf("%s %s%s ", COLOR_CYAN, s, COLOR_RESET);
-// }
+
+
 /* Receive routine: use recv to receive from socket and manage
    the fact that recv may return after having read less bytes than
    the passed buffer size

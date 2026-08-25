@@ -121,7 +121,7 @@ static int rta(ActiveTask new_active_task){
             
             if(response_time > D_i)
                 return -1;  // unschedulable
-            printf("[RTA]: respprev: %Lf, resptime: %Lf\n", response_prev, response_time);
+            print_analysis("[RTA]: respprev: %Lf, resptime: %Lf\n", response_prev, response_time);
         }
     }
 

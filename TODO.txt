@@ -5,4 +5,5 @@ TODO
     [SERVER] currSd value was: 4
 
 
-    set active task to inactive
+
+    [SERVER] [tasks_active MUTEX] cl 0 RELEASED: NO instance to deactivate
