@@ -3,7 +3,6 @@
 #include "headers/task.h"
 #include "headers/rta.h"
 
-#include <limits.h> // needed to use INT_MAX as lowest_instance in 'find_instance_to_deactivate()'
 #include <time.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -129,31 +128,9 @@ static void *handling_active_task(void *task)
         clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next_execution, NULL);     // TODO to test
     }
 
-    remove_active_task(pos);
+    remove_active_task(t);
 
     return NULL;
-}
-
-/*
-    Given a task find the oldest instance's position 
-*/
-static int find_instance_to_deactivate(ActiveTask *at){
-    int min = -1;
-    int lowest_instance = INT_MAX;
-    for(int i = 0; i < MAX_NUMBER_ACTIVE_TASKS; i++){
-        ActiveTask *current = &tasks_active[i];
-        if(current->active && 
-            current->task_id == at->task_id &&
-            current->instance_id < lowest_instance)
-            {
-                // UPDATE
-                min = i;
-                lowest_instance = current->instance_id;
-            }
-    }
-    if(min == -1)
-        return -1;
-    return min;
 }
 
 
@@ -269,6 +246,8 @@ static void handleConnection(Client *c)
                     "       stop: force stop server connection\n"
                     "       a [NUMBER]: activate task [NUMBER]\n"
                     "       b [NUMBER]: deactivate/block task [NUMBER]\n"
+                    "       verbose: [0,3) \n"
+
                 );
                 break;
 
@@ -336,28 +315,18 @@ static void handleConnection(Client *c)
                     answer = strdup("ERROR invalid number detected: must be in [1-4] ");
                     break;
                 }
+                
+                // define the candidate to find and then deactivate
                 candidate_task.task_id = task_number;
                 candidate_task.client_owner_fd = currSd;
                 candidate_task.client_port = c->port;
-               
-                // must disable the thread
-                    // associated to this task
-                        // the lowest instance (first one that arrived)
-                // how? by setting that activetask in tasks_active to NOT active
-                pthread_mutex_lock(&active_tasks_mutex);
 
-                // scan for all tasks_active, chose the position where the lowest
-                //  instance of this client is active
-                int pos = find_instance_to_deactivate(&candidate_task);
+                int pos = remove_active_task(&candidate_task);
                 if (pos == -1) {
-                    pthread_mutex_unlock(&active_tasks_mutex);
-                    print_server_error("ERROR handleConnection(): NO INSTANCE TO DEACTIVATE");
                     answer = strdup("ERROR task not active");
+                    print_server_error("ERROR handleConnection(): NO INSTANCE TO DEACTIVATE");
                     break;
                 }
-                tasks_active[pos].active = 0;   // immediately set it to not active, make it exit
-                                                // from the loop in handling_active_task()
-                pthread_mutex_unlock(&active_tasks_mutex);
 
                 print_server("[CLIENT %d] TASK %d DEACTIVATED in slot %d", c->port, task_number, pos);
                 answer = strdup("task DEACTIVATED");

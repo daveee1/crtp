@@ -5,6 +5,8 @@
 #include <semaphore.h>
 #include <pthread.h>
 #include "headers/utils.h"
+#include <limits.h> // needed to use INT_MAX as lowest_instance in 'find_instance_to_deactivate()'
+
 
 #define MAX_NUMBER_ACTIVE_TASKS 4
 
@@ -35,7 +37,7 @@ extern pthread_mutex_t active_tasks_mutex;
 extern sem_t free_slots_sem;
 
 int add_active_task(ActiveTask *new_task);
-void remove_active_task(int position);
+int remove_active_task(ActiveTask *at);
 void init_active_tasks();
 int find_free_pos_in_tasksactive();
 
