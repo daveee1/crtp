@@ -323,7 +323,7 @@ static void handleConnection(Client *c)
 
                 int pos = find_and_remove_active_task(&candidate_task);
                 if (pos == -1) {
-                    answer = strdup("WRONG task NOT active");
+                    answer = strdup("task was NOT active");
                     print_server_warning("NO INSTANCE TO DEACTIVATE");
                     break;
                 }
