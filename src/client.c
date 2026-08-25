@@ -1,4 +1,14 @@
-#include "headers/server.h"
+#include "headers/utils.h"
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <stdio.h>
+
+
 
 #define FALSE 0
 #define TRUE 1
@@ -104,19 +114,41 @@ int main(int argc, char **argv)
     char command[256];
     char *answer;
     int  client_socket;
-    int port;
+    int client_port;
     int len;
     unsigned int netLen;
     struct sockaddr_in sin;
     struct hostent *hp;
-    /* Check number of arguments and get IP address and port */
-    if (argc < 3)
+    /* Check number of arguments and get IP address, port and verbose flags*/
+    if (argc < 4)
     {
-        printf("Usage: <ip_hostname> <port>\n");
+        print_client_error("Usge: <ip_hostname> <port> <verbose>\n");
         exit(0);
     }
-    sscanf(argv[1], "%s", hostname);
-    sscanf(argv[2], "%d", &port);
+
+    // Parse hostname (argv[1])
+    if (sscanf(argv[1], "%s", hostname) != 1) {
+        print_server_error("[SERVER] ERROR: Invalid port number");
+        exit(EXIT_FAILURE);
+    }
+
+    // get port
+    if (sscanf(argv[2], "%d", &client_port) != 1 || client_port <= 0 || client_port > 65535) {
+        print_server_error("[SERVER] ERROR: Invalid port number");
+        exit(EXIT_FAILURE);
+    }
+
+    // Parse VERBOSE 
+    if (sscanf(argv[3], "%d", &verbose) == 1 && (verbose > 0 )) {
+        char s[80];
+        snprintf(s, sizeof(s), "Verbose set to %d", verbose);
+        print_client(s);
+    } 
+    else 
+        print_client("[SERVER] Invalid verbose input, defaulting to 0\n");
+
+
+
 
     /* Resolve the passed name and store the resulting long representation
     in the struct hostent variable */
@@ -130,7 +162,7 @@ int main(int argc, char **argv)
     memset(&sin, 0, sizeof(sin));
     sin.sin_family = AF_INET;
     sin.sin_addr.s_addr = ((struct in_addr *)(hp->h_addr_list[0]))->s_addr;
-    sin.sin_port = htons(port);
+    sin.sin_port = htons(client_port);
     
     /* create a new socket */
     if ((client_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1)

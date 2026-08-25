@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <semaphore.h>
 #include <pthread.h>
+#include "headers/utils.h"
 
 #define MAX_NUMBER_ACTIVE_TASKS 4
 
@@ -42,13 +43,13 @@ int find_free_pos_in_tasksactive();
 
 // TASKS
 /*
-    most complex
+    most complex: 1
 */ 
 static void run_task1(void);
 static void run_task2(void);
 static void run_task3(void);
 /*
-less complex
+less complex: 4
 */ 
 static void run_task4(void);
 

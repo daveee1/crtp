@@ -1,10 +1,34 @@
-#include "headers/server.h"
+// my libraries
+#include "headers/utils.h"
+#include "headers/task.h"
+#include "headers/rta.h"
+
+#include <limits.h> // needed to use INT_MAX as lowest_instance in 'find_instance_to_deactivate()'
+#include <time.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <errno.h> 
+
 
 #define MAX_THREADS 5
 
-
-/* Real definition: allocates memory for 'verbose' */
-int verbose = 0;
+typedef struct {
+    int socket_fd;
+    int position; // id in the buffer
+    int satisfied;  // were all its tasks managed? 1 yes, 0 no
+    int ntasks;
+    char ip[16];
+    int port;
+    pthread_t thread; // will be filled automatically by pthread_create()
+    int active;               /* 1 if connected, 0 if disconnected */
+} Client;
 
 // our clients's buffer
 Client clients[MAX_THREADS];
@@ -147,15 +171,10 @@ static void rmvclient_unlocked(Client *client) {
     pthread_cond_signal(&roomAvailable);
     
     /* Debugging */
-    char s[100];
-    snprintf(
-        s,
-        sizeof(s),
-        "CLOSED CLIENT: cl->%s, port->%d",
+    print_client("CLOSED CLIENT: cl->%s, port->%d",
         client->ip,
         client->port
     );
-    print_client(s);
 }
 
 
@@ -217,13 +236,7 @@ static void handleConnection(Client *c)
         if(receive(currSd, (char *)&netLen, sizeof(netLen))){
             // an error occured in the recv() method
             print_server_warning("receive failed before command: client exited");
-            char s[50];
-            snprintf(
-                s,
-                sizeof(s),
-                "currSd value was: %d", currSd
-            );
-            print_server_warning(s);         
+            print_server_warning("currSd value was: %d", currSd);
             break;
         } 
         /* Convert from network byte order */
@@ -286,9 +299,7 @@ static void handleConnection(Client *c)
 
                 if(is_schedulable(candidate_task) == -1){
                     // task NOT SCHEDULABLE
-                    char buf[128];
-                    snprintf(buf, sizeof(buf), "[CLIENT %d] TASK %d NOT SCHEDULABLE", c->port, task_number);
-                    print_server(buf);
+                    print_server("[CLIENT %d] TASK %d NOT SCHEDULABLE", c->port, task_number);
 
                     answer = strdup("TASK_REJECTED: System unschedulable (Deadline miss risk)");
                 }
@@ -311,11 +322,9 @@ static void handleConnection(Client *c)
                     // Detach thread so resources auto-reclaim on completion
                     pthread_detach(tasks_active[free_pos].thread_id);
 
-                    char buf[128];
-                    snprintf(buf, sizeof(buf), "[CLIENT %d] TASK %d ACTIVATED in slot %d", c->port, task_number, free_pos);
-                    print_server(buf);
-                    
+                    print_server("[CLIENT %d] TASK %d ACTIVATED in slot %d", c->port, task_number, free_pos);                    
                     answer = strdup("TASK_ACTIVATED");
+
                     print_active_tasks();
                 }
                 break;
@@ -350,10 +359,9 @@ static void handleConnection(Client *c)
                                                 // from the loop in handling_active_task()
                 pthread_mutex_unlock(&active_tasks_mutex);
 
-                char buf[128];
-                snprintf(buf, sizeof(buf), "[CLIENT %d] TASK %d DEACTIVATED in slot %d", c->port, task_number, pos);
-                print_server(buf);
+                print_server("[CLIENT %d] TASK %d DEACTIVATED in slot %d", c->port, task_number, pos);
                 answer = strdup("task DEACTIVATED");
+
                 print_active_tasks();
 
                 break;
@@ -427,7 +435,12 @@ static int findFreePosition(void) {
 */
 static void addclient(int current_socket, struct sockaddr_in *retSin)
 {
+    int port = ntohs(retSin->sin_port);
+    print_server("[Client MUTEX] client port %d WAITING ", port);
+    
+    
     pthread_mutex_lock(&mutex);
+    print_server("[Client MUTEX] client port %d ACQUIRED ", port);
 
     int free_position = findFreePosition();
 
@@ -443,7 +456,7 @@ static void addclient(int current_socket, struct sockaddr_in *retSin)
     client->position = free_position;
     client->socket_fd = current_socket;
     /* Convert port from network byte order */
-    client->port = ntohs(retSin->sin_port);
+    client->port = port;
 
     /* Convert binary IPv4 address to ASCII string */
     inet_ntop(
@@ -463,23 +476,19 @@ static void addclient(int current_socket, struct sockaddr_in *retSin)
     {
         pthread_mutex_unlock(&mutex);
         print_server_error("pthread_create failed");
+        print_server("[Client MUTEX] client port %d RELEASED ", port);
         /* Undo the allocation of this slot */
         client->active = 0;
         return;
     }
     pthread_mutex_unlock(&mutex);
+    print_server("[Client MUTEX] client port %d RELEASED ", port);
 
 
     /* Debugging */
-    char s[100];
-    snprintf(
-        s,
-        sizeof(s),
-        "NEW CLIENT: ip->%s, port->%d",
+    print_client("NEW CLIENT: ip->%s, port->%d",
         client->ip,
-        client->port
-    );
-    print_client(s);
+        client->port);
 }
 
 
@@ -563,11 +572,8 @@ int main(int argc, char *argv[]){
     }
 
     // Parse VERBOSE (argv[2])
-    if (sscanf(argv[2], "%d", &verbose) == 1 && (verbose >= 0 )) {
-        char s[80];
-        snprintf(s, sizeof(s), "Verbose set to %d", verbose);
-        print_server(s);
-    } 
+    if (sscanf(argv[2], "%d", &verbose) == 1 && (verbose > 0 ))
+        print_server("Verbose set to %d", verbose);
     else 
         print_server("[SERVER] Invalid verbose input, defaulting to 0\n");
 
@@ -626,9 +632,7 @@ int main(int argc, char *argv[]){
             }
 
             /* Print the EXACT system error using strerror(errno) */
-            char err_buf[128];
-            snprintf(err_buf, sizeof(err_buf), "SELECT error: %s", strerror(errno));
-            print_server_error(err_buf);
+            print_server_error("SELECT error: %s", strerror(errno));
             break; // Exit loop cleanly instead of immediate exit(1)
         }
 

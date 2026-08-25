@@ -7,7 +7,7 @@ sem_t free_slots_sem;               // is there space in our 'tasks_active' arra
 static int next_instance_id = 0;    // to have a 'time history' of the tasks
 
 static void run_task1_unlocked(void) {
-    printf("task 1 activated\n");
+    if(verbose > 3) printf("task 1 activated\n");
     volatile double val = 1.0001;   // volatile so not optimizable by -O3
     for (volatile long i = 0; i < 240000010L; i++) {
         val = val * 1.0000001 + 0.0000001;
@@ -15,7 +15,7 @@ static void run_task1_unlocked(void) {
 }
 
 static void run_task2_unlocked(void) {
-    printf("task 2 activated\n");
+    if(verbose > 3) printf("task 2 activated\n");
     volatile double val = 1.0001;
     for (volatile long i = 0; i < 180000001L; i++) {
         val = val * 1.0000001 + 0.0000001;
@@ -23,7 +23,7 @@ static void run_task2_unlocked(void) {
 }
 
 static void run_task3_unlocked(void) {
-    printf("task 3 activated\n");
+    if(verbose > 3) printf("task 3 activated\n");
     volatile double val = 1.0001;
     for (volatile long i = 0; i < 120000000L; i++) {
         val = val * 1.0000001 + 0.0000001;
@@ -31,7 +31,7 @@ static void run_task3_unlocked(void) {
 }
 
 static void run_task4_unlocked(void) {
-    printf("task 4 activated\n");
+    if(verbose > 3) printf("task 4 activated\n");
     volatile double val = 1.0001;
     for (volatile long i = 0; i < 60000000L; i++) {
         val = val * 1.0000001 + 0.0000001;

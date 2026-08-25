@@ -5,7 +5,7 @@
 extern int verbose;
 
 
-
+#include <stdarg.h> // ex print_server("Port %d client %s thread %d", ...)
 #include <stdio.h>
 #include <sys/select.h>
 #include <sys/time.h>
@@ -31,15 +31,15 @@ extern int verbose;
 // #define COLOR_CYAN "\033[0;36m" // print active tasks
 
 
-void print_server_error(const char *error);
-void print_server(const char *s);
-void print_server_warning(const char *s);
+void print_server_error(const char *format, ...);
+void print_server(const char *format, ...);
+void print_server_warning(const char *format, ...);
 
-void print_client_error(const char *error);
-void print_client(const char *s);
-void print_client_warning(const char *s);
+void print_client_error(const char *format, ...);
+void print_client(const char *format, ...);
+void print_client_warning(const char *format, ...);
 
-void print_analysis(const char *s);
+void print_analysis(const char *format, ...);
 
 
 int receive(int sd, char *retBuf, int size);
