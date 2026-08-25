@@ -146,8 +146,8 @@ int find_and_remove_active_task(ActiveTask *at){
     //  instance of this client is active
     int pos = find_instance_to_deactivate(at);
     if (pos == -1) {
+        // no istance to deactivate
         pthread_mutex_unlock(&active_tasks_mutex);
-        print_server_error("ERROR handleConnection(): NO INSTANCE TO DEACTIVATE");
         return -1;
     }
 
