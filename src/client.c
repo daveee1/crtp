@@ -28,6 +28,16 @@ static int handle_server_answer(int socket){
     }
 
     len = ntohl(netLen);
+
+
+    // Sanity check length against maximum expected command size
+    if (len <= 0 || len > 256) {
+        print_server_error("Invalid payload length received: %d\n", len);
+        // close(socket); will be closed outside main loop
+        return -1;
+    }
+
+
     char *answer = malloc(len + 1);
     if (!answer) return -1;
 
@@ -129,13 +139,13 @@ int main(int argc, char **argv)
 
     // Parse hostname (argv[1])
     if (sscanf(argv[1], "%s", hostname) != 1) {
-        print_server_error("[SERVER] ERROR: Invalid port number");
+        print_client_error("Invalid hostname");
         exit(EXIT_FAILURE);
     }
 
     // get port
     if (sscanf(argv[2], "%d", &client_port) != 1 || client_port <= 0 || client_port > 65535) {
-        print_server_error("[SERVER] ERROR: Invalid port number");
+        print_client_error("Invalid port number");
         exit(EXIT_FAILURE);
     }
 
@@ -143,7 +153,7 @@ int main(int argc, char **argv)
     if (sscanf(argv[3], "%d", &verbose) == 1 && (verbose > 0 ))
         print_client("Verbose set to %d", verbose);
     else 
-        print_client("[SERVER] Invalid verbose input, defaulting to 0\n");
+        print_client("Invalid verbose input, defaulting to 0\n");
 
 
 
