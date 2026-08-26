@@ -166,39 +166,51 @@ static void rmvclient(Client *client) {
 }
 
 static void print_active_tasks(Client *c) {
-
     print_server("[CLIENT %d] printing tasks WAITING", c->port);
-    pthread_mutex_lock(&active_tasks_mutex);
-    print_server("[CLIENT %d] printing tasks ACQUIRED", c->port);
 
-    printf("\n+---+------------------+---------+------------------+\n");
-    printf("| Slot| Client Port      | TASK_ID | Worker Thread ID |\n");
-    printf("\n+---+------------------+---------+------------------+\n");
-
+    // 1. Take a local snapshot of the task buffer (Fast Critical Section)
+    ActiveTask snapshot[MAX_NUMBER_ACTIVE_TASKS];
     int count = 0;
+
+    pthread_mutex_lock(&active_tasks_mutex);
     for (int i = 0; i < MAX_NUMBER_ACTIVE_TASKS; i++) {
-        if (tasks_active[i].active == 1) {
-            printf("|  %d  | Port: %-10d | Task: %d  | ThreadID: %d|\n",
-                   i,
-                   tasks_active[i].client_port, 
-                   tasks_active[i].task_id, 
-                   tasks_active[i].instance_id);
+        snapshot[i] = tasks_active[i];
+        if (snapshot[i].active == 1) {
             count++;
         }
     }
+    pthread_mutex_unlock(&active_tasks_mutex); // Release data lock IMMEDIATELY
+
+    // 2. Lock ONLY the console log mutex to print the table atomically
+    pthread_mutex_lock(&log_mutex);
+    printf("[CLIENT %d] printing tasks ACQUIRED", c->port);
+
+    printf("\n+---+------------------+---------+------------------+\n");
+    printf("| Slot| Client Port      | TASK_ID | Worker Thread ID |\n");
+    printf("+---+------------------+---------+------------------+\n");
 
     if (count == 0) {
         printf("|       --- No Active Tasks Running ---        |\n");
+    } else {
+        for (int i = 0; i < MAX_NUMBER_ACTIVE_TASKS; i++) {
+            if (snapshot[i].active == 1) {
+                printf("|  %-2d | Port: %-10d | Task: %-1d | ThreadID: %-5d|\n",
+                       i,
+                       snapshot[i].client_port, 
+                       snapshot[i].task_id, 
+                       snapshot[i].instance_id);
+            }
+        }
     }
-    printf("\n+---+------------------+---------+------------------+\n");
+
+    printf("+---+------------------+---------+------------------+\n");
     printf(" Total Active Tasks: %d / %d\n\n", count, MAX_NUMBER_ACTIVE_TASKS);
 
-    pthread_mutex_unlock(&active_tasks_mutex);
-    print_server("[CLIENT %d] printing tasks RELEASED", c->port);
+    fflush(stdout); // Guarantee all text hits terminal before releasing
+    pthread_mutex_unlock(&log_mutex);
 
-
+    printf("[CLIENT %d] printing tasks RELEASED\n", c->port);
 }
-
 
 /* Handle an established  connection
    routine receive is listed in the previous example.
@@ -333,14 +345,13 @@ static void handleConnection(Client *c)
                 candidate_task.client_owner_fd = currSd;
                 candidate_task.client_port = c->port;
 
-                int pos = find_and_remove_active_task(&candidate_task);
-                if (pos == -1) {
+                
+                if (find_and_remove_active_task(&candidate_task) == -1) {
                     answer = strdup("task was NOT active");
                     print_server_warning("[CLIENT %d] NO INSTANCE TO DEACTIVATE for task %d", c->port, task_number);
                     break;
                 }
 
-                print_server("[CLIENT %d] TASK %d DEACTIVATED in slot %d", c->port, task_number, pos);
                 answer = strdup("task DEACTIVATED");
 
                 print_active_tasks(c);
@@ -426,7 +437,7 @@ static void addclient(int current_socket, struct sockaddr_in *retSin)
     int free_position = findFreePosition();
 
     while (free_position == -1) {
-        print_server_warning("Max capacity reached. Waiting for space...\n");
+        print_server_warning("Max clients capacity reached. Waiting for space...\n");
         pthread_cond_wait(&roomAvailable, &mutex);
         free_position = findFreePosition();
     }

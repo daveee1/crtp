@@ -2,12 +2,11 @@
 #define UTILS_H    /* 2. OK, define UTILS_H now! */
 
 
-extern int verbose;
 
 
 #include <stdarg.h> // ex print_server("Port %d client %s thread %d", ...)
 #include <stdio.h>
-#include <pthread.h> // to lock coonsole output
+#include <pthread.h> // to 'mutex' output
 #include <sys/select.h>
 #include <sys/time.h>
 #include <sys/socket.h>   /* Provides recv(), send(), socket(), accept() */
@@ -44,6 +43,9 @@ void print_analysis(const char *format, ...);
 
 
 int receive(int sd, char *retBuf, int size);
+
+extern int verbose;
+extern pthread_mutex_t log_mutex; // TODO need it extern in print_active_tasks() defined in server.c
 
 
 #endif             /* 3. End of guard */

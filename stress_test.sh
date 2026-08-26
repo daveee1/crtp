@@ -3,7 +3,7 @@
 HOST="localhost"
 PORT=8080
 VERBOSE=8
-HOLD_TIME=4
+HOLD_TIME=0.5
 
 run_client_session() {
     CLIENT_ID=$1
@@ -35,5 +35,9 @@ run_client_session 3 3 4 &
 run_client_session 4 4 1 &
 run_client_session 5 1 3 &
 run_client_session 6 2 4 &
+run_client_session 7 4 2 &
+run_client_session 8 4 4 &
+run_client_session 9 4 4 &
+run_client_session 10 4 4 &
 
 wait
