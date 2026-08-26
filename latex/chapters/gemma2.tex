@@ -10,7 +10,6 @@
 
 % --- Slide 2: System Requirements & Constraints ---
 \begin{frame}{System Requirements \& Constraints}
-    The system simulates a real-time operating system (RTOS) environment:
     \begin{block}{Task Model}
         Each task $T_i$ is defined by a triplet $(C_i, P_i, D_i)$:
         \begin{itemize}
@@ -42,7 +41,9 @@
             \draw[->, thick] (server) -- (tasks) node[midway, right] {Task Management};
         \end{tikzpicture}
     \end{center}
+\end{frame}
 
+\begin{frame}
     \begin{itemize}
         \item \textbf{Client Layer:} Parses user input and transmits encoded command payloads.
         \item \textbf{Supervisor Layer:} Manages the connection pool, handles command parsing, and performs schedulability checks.
@@ -109,16 +110,15 @@
 
     \textbf{Implementation in \texttt{rta.c}:}
     \begin{itemize}
-        \item \textbf{Sorting:} Tasks are sorted by period $P_i$ (Rate Monotonic Priority).
+        \item \textbf{Sorting:} Tasks are sorted by period $P_i$.
         \item \textbf{Convergence:} The loop continues until $R_i^{(k)} = R_i^{(k-1)}$.
-        \item \textbf{Failure Condition:} If $R_i > D_i$, the task set is declared \textbf{unschedulable}.
+        \item \textbf{Failure Condition:} If $R_i > D_i$ the task is \textbf{unschedulable}.
     \end{itemize}
 \end{frame}
 
 % --- Slide 7: Concurrency Model & Threading ---
 \begin{frame}{Concurrency Model: Threading Hierarchy}
-    The system utilizes a dual-level threading model to ensure scalability and responsiveness:
-
+    How do we maintain the period of a task?
     \begin{itemize}
         \item \textbf{Connection Management:}
         Each client connection is handled by a \texttt{connectionHandler} thread. This prevents a single slow client from blocking the server's ability to accept new connections.
@@ -134,26 +134,21 @@
 \end{frame}
 
 % --- Slide 8: Synchronization & Data Integrity ---
-\begin{frame}{Synchronization & Resource Management}
-    To prevent race conditions in a multi-threaded, multi-client environment, several primitives are employed:
+\begin{frame}{Synchronization and Resource Management}
+To prevent race conditions in a multi-threaded, multi-client environment, we employed:
 
-    \begin{description}
-        \item[Mutexes] 
+   \begin{description}
+        \item[Mutexes:]
             \begin{itemize}
-                \item \texttt{active\_tasks\_mutex}: Protects the \texttt{tasks\_active} array during addition, removal, and RTA analysis.
-                \item \texttt{mutex} (Server): Protects the client connection buffer.
-                \item \texttt{log\_mutex}: Ensures atomic, non-interleaved console output.
+                \item \texttt{active\_tasks\_mutex}: Protects task array and RTA.
+                \item \texttt{mutex}: Synchronizes client connection buffer.
+                \item \texttt{log\_mutex}: Ensures atomic, clean logging output.
             \end{itemize}
-        \item[Semaphores]
-            \begin{itemize}
-                \item \texttt{free\_slots\_sem}: A counting semaphore that limits the number of concurrent active tasks, preventing over-subscription of the task array.
-            \end{itemize}
-        \item[Condition Variables]
-            \begin{itemize}
-                \item \texttt{roomAvailable}: Manages client flow control, blocking new connections if the client buffer is full.
-            \end{itemize}
+        \item[Semaphores:] \texttt{free\_slots\_sem} limits concurrent active tasks.
+        \item[Condition Vars:] \texttt{roomAvailable} blocks new incoming connections when the client buffer is full.
     \end{description}
 \end{frame}
+
 
 % --- Slide 9: Implementation Details: Deterministic Timing ---
 \begin{frame}{Implementation: Deterministic Timing Control}
@@ -173,46 +168,18 @@
 \end{frame}
 
 % --- Slide 10: Control Flow Summary ---
-\begin{frame}{Command Processing Flow}
-    \begin{center}
-        \begin{tikzpicture}[scale=0.8]
-            \node (start) [draw, circle] {Start};
-            \node (recv) [draw, rectangle, below of=start] {Receive Command};
-            \node (parse) [draw, diamond, below of=recv] {Parse Type};
-            \node (sched) [draw, rectangle, below of=parse, xshift=2cm] {Schedulability Check};
-            \node (act) [draw, rectangle, below of=sched] {Activate Thread};
-            \node (deact) [draw, rectangle, below of=parse, xshift=-2cm] {Deactivate};
-            \node (end) [draw, circle, below of=act] {End Loop};
-
-            \draw[->] (start) -- (recv);
-            \draw[->] (recv) -- (parse);
-            \draw[->] (parse) -- node[above] {ACTIVATE} (sched);
-            \draw[->] (parse) -- node[above] {BLOCK} (deact);
-            \draw[->] (sched) -- (act);
-            \draw[->] (act) -- (end);
-            \draw[->] (deact) -- (end);
-        \end{tikzpicture}
-    \end{center}
-    \begin{itemize}
-        \item \textbf{Safety First:} The "Schedulability Check" is a mandatory gateway before "Activate Thread".
-        \item \textbf{Graceful Exit:} The \texttt{STOP} command triggers a broadcast to all clients to ensure a synchronized shutdown.
-    \end{itemize}
+\begin{frame}{Concurrent Client-Server Architecture}
+    \includegraphics[width=1\textwidth]{images/image.png}
 \end{frame}
 
 % --- Slide 11: Conclusion ---
-\begin{frame}{Conclusion}
+\begin{frame}{Conclusion \& Future Work}
     \begin{itemize}
-        \item \textbf{Robustness:} The implementation successfully bridges high-level networking with low-level real-time scheduling requirements.
-        \item \textbf{Mathematical Rigor:} By combining Utilization Bounds with RTA, the system provides $100\%$ accuracy in task admission decisions.
-        \item \textbf{Scalability:} The use of thread-per-client and thread-per-task models allows for efficient resource utilization in a multi-core environment.
-        \item \textbf{Future Work:}
-            \begin{itemize}
-                \item Implementation of Earliest Deadline First (EDF) scheduling.
-                \item Support for multi-core task affinity.
-                \item Enhanced jitter analysis.
-            \end{itemize}
+        \item \textbf{Future Improvements:} 
+        \begin{itemize}
+            \item Compare Rate Monotonic with alternative fixed-priority policies.
+            \item Extend evaluation to dynamic-priority algorithms (e.g., EDF).
+            \item Evaluate system performance under high CPU utilization and overloaded conditions.
+        \end{itemize}
     \end{itemize}
-    \vspace{0.5cm}
-    \centering
-    \textbf{Thank you for your attention. Questions?}
 \end{frame}
