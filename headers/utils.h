@@ -7,6 +7,7 @@ extern int verbose;
 
 #include <stdarg.h> // ex print_server("Port %d client %s thread %d", ...)
 #include <stdio.h>
+#include <pthread.h> // to lock coonsole output
 #include <sys/select.h>
 #include <sys/time.h>
 #include <sys/socket.h>   /* Provides recv(), send(), socket(), accept() */

@@ -77,14 +77,14 @@ add new task into 'active_tasks' array.
 */
 int add_active_task(ActiveTask *new_task){
     sem_wait(&free_slots_sem);  // is there space for a new task?
-    print_server("[tasks_active MUTEX] cl %d WAITING", new_task->client_port);
+    print_server("[tasks_active MUTEX] [CLIENT %d] ADD task %d WAITING",  new_task->client_port, new_task->task_id );
     pthread_mutex_lock(&active_tasks_mutex);
-    print_server("[tasks_active MUTEX] cl %d ACQUIRED", new_task->client_port);
+    print_server("[tasks_active MUTEX] [CLIENT %d] ADD task %d ACQUIRED",  new_task->client_port,  new_task->task_id);
     
     int free_pos = find_free_pos_in_tasksactive(); // there must be since free_slots_sem > 1
     if (free_pos == -1) {
         pthread_mutex_unlock(&active_tasks_mutex);
-        print_server("[tasks_active MUTEX] cl %d RELEASED", new_task->client_port);
+        print_server("[tasks_active MUTEX] [CLIENT %d] NO POS in ADD task %d RELEASED", new_task->client_port, new_task->task_id);
         sem_post(&free_slots_sem);
         return -1;
     }
@@ -98,7 +98,7 @@ int add_active_task(ActiveTask *new_task){
     task->instance_id = next_instance_id++;  
     
     pthread_mutex_unlock(&active_tasks_mutex);
-    print_server("[tasks_active MUTEX] cl %d RELEASED", new_task->client_port);
+    print_server("[tasks_active MUTEX] [CLIENT %d] ADD task %d RELEASED",  new_task->client_port,  new_task->task_id);
 
     return free_pos;
 }
@@ -132,13 +132,13 @@ in particular the lowest instance (first one that arrived).
 How? by setting that activetask in tasks_active to NOT active
 */
 int find_and_remove_active_task(ActiveTask *at){
-    print_server("[tasks_active MUTEX] cl %d WAITING to find and remove task %d", 
+    print_server("[tasks_active MUTEX] [CLIENT %d] WAITING, task %d", 
         at->client_port,
         at->task_id);
 
     pthread_mutex_lock(&active_tasks_mutex);
     
-    print_server("[tasks_active MUTEX] cl %d ACQUIRED to find and remove task %d", 
+    print_server("[tasks_active MUTEX] [CLIENT %d] ACQUIRED, task %d", 
         at->client_port,
         at->task_id);
 
@@ -149,7 +149,7 @@ int find_and_remove_active_task(ActiveTask *at){
     if (pos == -1) {
         // no istance to deactivate
         pthread_mutex_unlock(&active_tasks_mutex);
-        print_server("[tasks_active MUTEX] cl %d RELEASED: NO instance to deactivate"); 
+        print_server("[tasks_active MUTEX] [CLIENT %d] RELEASED: NO instance to deactivate task %d", at->client_port, at->task_id); 
         return -1;
     }
 
@@ -161,7 +161,7 @@ int find_and_remove_active_task(ActiveTask *at){
     task->thread_id = -1;  
     
     pthread_mutex_unlock(&active_tasks_mutex);
-    print_server("[tasks_active MUTEX] cl %d RELEASED to find and remove task %d", 
+    print_server("[tasks_active MUTEX] [CLIENT %d] RELEASED, task %d", 
         at->client_port,
         at->task_id);
     sem_post(&free_slots_sem);

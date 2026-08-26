@@ -35,11 +35,14 @@ Client clients[MAX_THREADS];
 // global variable: if a client wants to close the server
 int close_server = 0;
 
-// SEMAPHOREES
+// MUTEXes
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutexstopserver = PTHREAD_MUTEX_INITIALIZER;  // necessary to overwrite correcly variable close_server
-// roomAvailable when there is space in the buffer when buffer has clients already in it
-pthread_cond_t roomAvailable = PTHREAD_COND_INITIALIZER;
+
+// SEMAPHORES
+pthread_cond_t roomAvailable = PTHREAD_COND_INITIALIZER; // roomAvailable when there is space 
+                                                        // in the buffer when buffer has clients
+                                                        //  already in it
 
 
 
@@ -162,7 +165,12 @@ static void rmvclient(Client *client) {
     pthread_mutex_unlock(&mutex);
 }
 
-static void print_active_tasks(void) {
+static void print_active_tasks(Client *c) {
+
+    print_server("[CLIENT %d] printing tasks WAITING", c->port);
+    pthread_mutex_lock(&active_tasks_mutex);
+    print_server("[CLIENT %d] printing tasks ACQUIRED", c->port);
+
     printf("\n+---+------------------+---------+------------------+\n");
     printf("| Slot| Client Port      | TASK_ID | Worker Thread ID |\n");
     printf("\n+---+------------------+---------+------------------+\n");
@@ -184,6 +192,11 @@ static void print_active_tasks(void) {
     }
     printf("\n+---+------------------+---------+------------------+\n");
     printf(" Total Active Tasks: %d / %d\n\n", count, MAX_NUMBER_ACTIVE_TASKS);
+
+    pthread_mutex_unlock(&active_tasks_mutex);
+    print_server("[CLIENT %d] printing tasks RELEASED", c->port);
+
+
 }
 
 
@@ -231,7 +244,7 @@ static void handleConnection(Client *c)
         }
         command[len] = '\0'; //to end the command string
         
-        print_server(command);
+        print_server("[CLIENT %d] COMMAND: %s",c->port, command);
         
         /* Execute the command using switch */
         CommandType cmd_type = parse_command(command);
@@ -247,7 +260,6 @@ static void handleConnection(Client *c)
                     "       a [NUMBER]: activate task [NUMBER]\n"
                     "       b [NUMBER]: deactivate/block task [NUMBER]\n"
                     "       verbose: [0,3) \n"
-
                 );
                 break;
 
@@ -285,13 +297,13 @@ static void handleConnection(Client *c)
                 else{
                     // task SCHEDULABLE: add it to 'active_tasks' array!
                     int free_pos = add_active_task(&candidate_task);
-                    // generate a thread for it
                     if(free_pos == -1){
                         print_server("FULL CAPACITY, retry or deactivate!");
                         answer = strdup("FULL CAPACITY tasks_active[]");
                         break;
                     }
-
+                    
+                    // generate a thread for it
                     if(pthread_create(&tasks_active[free_pos].thread_id, NULL, handling_active_task, &tasks_active[free_pos])){
                         print_server_error("Failed to spawn worker thread for task");
                         answer = strdup("ERROR: Thread creation failed");
@@ -304,7 +316,7 @@ static void handleConnection(Client *c)
                     print_server("[CLIENT %d] TASK %d ACTIVATED in slot %d", c->port, task_number, free_pos);                    
                     answer = strdup("TASK_ACTIVATED");
 
-                    print_active_tasks();
+                    print_active_tasks(c);
                 }
                 break;
             
@@ -324,14 +336,14 @@ static void handleConnection(Client *c)
                 int pos = find_and_remove_active_task(&candidate_task);
                 if (pos == -1) {
                     answer = strdup("task was NOT active");
-                    print_server_warning("NO INSTANCE TO DEACTIVATE");
+                    print_server_warning("[CLIENT %d] NO INSTANCE TO DEACTIVATE for task %d", c->port, task_number);
                     break;
                 }
 
                 print_server("[CLIENT %d] TASK %d DEACTIVATED in slot %d", c->port, task_number, pos);
                 answer = strdup("task DEACTIVATED");
 
-                print_active_tasks();
+                print_active_tasks(c);
 
                 break;
         }
@@ -405,11 +417,11 @@ static int findFreePosition(void) {
 static void addclient(int current_socket, struct sockaddr_in *retSin)
 {
     int port = ntohs(retSin->sin_port);
-    print_server("[Client MUTEX] client port %d WAITING ", port);
+    print_server("[CLIENT MUTEX] [CLIENT %d] WAITING ", port);
     
     
     pthread_mutex_lock(&mutex);
-    print_server("[Client MUTEX] client port %d ACQUIRED ", port);
+    print_server("[CLIENT MUTEX] [CLIENT %d] ACQUIRED ", port);
 
     int free_position = findFreePosition();
 
@@ -445,13 +457,13 @@ static void addclient(int current_socket, struct sockaddr_in *retSin)
     {
         pthread_mutex_unlock(&mutex);
         print_server_error("pthread_create failed");
-        print_server("[Client MUTEX] client port %d RELEASED ", port);
+        print_server("[CLIENT MUTEX] [CLIENT %d] RELEASED ", port);
         /* Undo the allocation of this slot */
         client->active = 0;
         return;
     }
     pthread_mutex_unlock(&mutex);
-    print_server("[Client MUTEX] client port %d RELEASED ", port);
+    print_server("[CLIENT MUTEX] [CLIENT %d] RELEASED ", port);
 
 
     /* Debugging */

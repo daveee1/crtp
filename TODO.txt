@@ -3,7 +3,3 @@ TODO
 
     [SERVER] receive failed before command: client exited
     [SERVER] currSd value was: 4
-
-
-
-    [SERVER] [tasks_active MUTEX] cl 0 RELEASED: NO instance to deactivate

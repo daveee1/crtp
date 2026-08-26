@@ -4,12 +4,15 @@
 // (avoids linker error)
 int verbose = 0;
 
+pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 
 /* Red error output for Server */
 void print_server_error(const char *format, ...) {
     // 1. Fast Check: Skip if verbosity level isn't met
     if (verbose < 0 || format == NULL) return;
+
+    pthread_mutex_lock(&log_mutex);
 
     // 2. Print prefix with colors
     printf("%s[SERVER ERROR] ", COLOR_RED);
@@ -22,12 +25,17 @@ void print_server_error(const char *format, ...) {
 
     // 4. Reset colors and newline
     printf("%s\n", COLOR_RESET);
+
+    pthread_mutex_unlock(&log_mutex);
+
 }
 
 void print_server_warning(const char *format, ...) {
     // 1. Fast Check: Skip if verbosity level isn't met
     if (verbose < 1 || format == NULL) return;
     
+    pthread_mutex_lock(&log_mutex);
+
     // 2. Print prefix with colors
     printf("%s[SERVER WARNING] ", COLOR_YELLOW);
 
@@ -40,12 +48,15 @@ void print_server_warning(const char *format, ...) {
     // 4. Reset colors and newline
     printf("%s\n", COLOR_RESET);
 
+    pthread_mutex_unlock(&log_mutex);
 }
 
 
 void print_server(const char *format, ...) {
     // 1. Fast Check: Skip if verbosity level isn't met
     if (verbose < 2 || format == NULL) return;
+
+    pthread_mutex_lock(&log_mutex);
 
     // 2. Print prefix with colors
     printf("%s[SERVER] ", COLOR_ORANGE);
@@ -58,6 +69,8 @@ void print_server(const char *format, ...) {
 
     // 4. Reset colors and newline
     printf("%s\n", COLOR_RESET);
+
+    pthread_mutex_unlock(&log_mutex);
 }
 
 
@@ -66,6 +79,8 @@ void print_server(const char *format, ...) {
 void print_client(const char *format, ...) {
     // 1. Fast Check: Skip if verbosity level isn't met
     if (verbose < 2 || format == NULL) return;
+
+    pthread_mutex_lock(&log_mutex);
 
     // 2. Print prefix with colors
     printf("%s[CLIENT] ", COLOR_LIGHT_BLUE);
@@ -78,12 +93,17 @@ void print_client(const char *format, ...) {
 
     // 4. Reset colors and newline
     printf("%s\n", COLOR_RESET);
+
+    pthread_mutex_unlock(&log_mutex);
+
 }
 
 
 void print_client_warning(const char *format, ...) {
     // 1. Fast Check: Skip if verbosity level isn't met
     if (verbose < 2 || format == NULL) return;
+
+    pthread_mutex_lock(&log_mutex);
 
     // 2. Print prefix with colors
     printf("%s[CLIENT WARNING] ", COLOR_PURPLE);
@@ -96,11 +116,15 @@ void print_client_warning(const char *format, ...) {
 
     // 4. Reset colors and newline
     printf("%s\n", COLOR_RESET);
+
+    pthread_mutex_unlock(&log_mutex);
 }
 
 void print_client_error(const char *format, ...) {
     // 1. Fast Check: Skip if verbosity level isn't met
     if (verbose < 0 || format == NULL) return;
+
+    pthread_mutex_lock(&log_mutex);
 
     // 2. Print prefix with colors
     printf("%s[CLIENT ERROR] ", COLOR_BLUE);
@@ -113,6 +137,8 @@ void print_client_error(const char *format, ...) {
 
     // 4. Reset colors and newline
     printf("%s\n", COLOR_RESET);
+
+    pthread_mutex_unlock(&log_mutex);
 }
 
 
@@ -120,6 +146,8 @@ void print_client_error(const char *format, ...) {
 void print_analysis(const char *format, ...) {
     // 1. Fast Check: Skip if verbosity level isn't met
     if (verbose < 2 || format == NULL) return;
+
+    pthread_mutex_lock(&log_mutex);
 
     // 2. Print prefix with colors
     printf("%s[ANALYSIS] ", COLOR_LIGHT_GREEN);
@@ -132,6 +160,8 @@ void print_analysis(const char *format, ...) {
 
     // 4. Reset colors and newline
     printf("%s\n", COLOR_RESET);
+
+    pthread_mutex_unlock(&log_mutex);
 }
 
 

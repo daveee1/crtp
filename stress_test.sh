@@ -1,7 +1,7 @@
 #!/bin/bash
 
 HOST="localhost"
-PORT=8888
+PORT=8080
 VERBOSE=8
 HOLD_TIME=4
 

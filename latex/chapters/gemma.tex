@@ -1,0 +1,187 @@
+% 2. Abstract/Motivation
+\begin{frame}{Abstract \& Motivation}
+    \begin{itemize}
+        \item \textbf{Problem:} Managing dynamic, periodic task sets in a multi-user environment where system utilization must be strictly bounded to prevent deadline misses.
+        \item \textbf{Challenge:} Integrating asynchronous TCP/IP command-and-control with hard real-time execution constraints.
+        \item \textbf{Solution:} A multi-threaded Linux-based server implementing:
+        \begin{itemize}
+            \item \textbf{Rate Monotonic Priority} assignment.
+            \item \textbf{Two-stage Schedulability Verification:} Utilization Bound Test and Iterative Response Time Analysis (RTA).
+            \item \textbf{High-Precision Timing:} Mitigating cumulative drift via monotonic absolute-time sleeping.
+        \end{itemize}
+    \end{itemize}
+\end{frame}
+
+% 3. Formal Task Model
+\section{Formalism}
+\begin{frame}{Formal Task Model}
+    We model the system as a set of $n$ periodic tasks $\Gamma = \{\tau_1, \tau_2, \dots, \tau_n\}$.
+    Each task $\tau_i$ is characterized by a triplet:
+    \begin{block}{Task Tuple}
+        $$\tau_i = (C_i, P_i, D_i)$$
+    \end{block}
+    \begin{itemize}
+        \item \textbf{$C_i$ (Computation Time):} The worst-case execution time (WCET) required by the routine.
+        \item \textbf{$P_i$ (Period):$ The interval between consecutive task activations.
+        \item \textbf{$D_i$ (Deadline):$ The maximum allowable time from task arrival to completion.
+    \end{itemize}
+    \vfill
+    \textit{In this implementation, $D_i \le P_i$, ensuring a predictable deadline-driven model.}
+\end{frame}
+
+% 4. System Architecture
+\section{Architecture}
+\begin{frame}{System Architecture: Multi-Layered Orchestration}
+    The system is architected into three distinct functional planes:
+    \begin{enumerate}
+        \item \textbf{Communication Plane (TCP/IP):}
+        \begin{itemize}
+            \item Uses \texttt{select()} for non-blocking multiplexing of client sockets.
+            \item Implements a command-response protocol for asynchronous control.
+        \end{itemize}
+        \item \textbf{Orchestration Plane (Server Management):}
+        \begin{itemize}
+            \item \textbf{Client Handlers:} Dedicated threads managing the lifecycle of client connections.
+            \item \textbf{Task Manager:} A centralized registry (\texttt{tasks\_active}) protected by mutexes to ensure atomicity during task activation/deactivation.
+        \end{itemize}
+        \item \textbf{Execution Plane (Real-Time Workers):}
+        \begin{itemize}
+            \item \textbf{Worker Threads:} Specialized threads executing the routine and maintaining periodicity.
+        \end{itemize}
+    \end{enumerate}
+\end{frame}
+
+% 5. Schedulability Policy - Part 1
+\section{Scheduling Policy}
+\begin{frame}{Schedulability Policy: Utilization Bound Test}
+    To minimize computational overhead, we employ a hierarchical decision process. Before performing expensive RTA, we test the \textbf{Total Utilization ($U$)}:
+    
+    \begin{block}{Utilization Factor}
+        $$U = \sum_{i=1}^{n} \frac{C_i}{P_i}$$
+    \end{block}
+
+    \begin{itemize}
+        \item \textbf{Case $U > 1.0$:} The system is physically overloaded. \textbf{Immediate Rejection.}
+        \item \textbf{Case $U \le n(2^{1/n}-1)$:} (Liu \& Layland Bound). The task set is guaranteed to be schedulable under Rate Monotonic scheduling. \textbf{Immediate Acceptance.}
+        \item \textbf{Case $n(2^{1/n}-1) < U \le 1.0$:} The system is in the "uncertain" region. We must proceed to \textbf{Iterative Response Time Analysis.}
+    \end{itemize}
+\end{frame}
+
+% 6. Schedulability Policy - Part 2 (RTA)
+\begin{frame}{Schedulability Policy: Iterative RTA}
+    For tasks in the uncertain utilization region, we calculate the Worst-Case Response Time ($R_i$) for each task $\tau_i$.
+    
+    \begin{alertblock}{RTA Mathematical Formulation}
+        The response time $R_i$ is found by solving the following recurrence:
+        $$R_i^{(k+1)} = C_i + \sum_{j \in hp(i)} \left\lceil \frac{R_i^{(k)}}{P_j} \right\rceil C_j$$
+        where $hp(i)$ is the set of tasks with higher priority ($P_j < P_i$).
+    \end{alertblock}
+
+    \begin{itemize}
+        \item \textbf{Convergence:} The iteration continues until $R_i^{(k+1)} = R_i^{(k)}$.
+        \item \textbf{Failure Condition:} If at any point $R_i > D_i$, the task set is \textbf{Unschedulable}.
+    \end{itemize}
+\end{frame}
+
+% 7. Concurrency Control
+\section{Concurrency}
+\begin{frame}{Concurrency Control \& Synchronization}
+    To maintain data integrity in a multi-threaded environment, the following primitives are utilized:
+    
+    \begin{table}
+        \centering
+        \begin{tabular}{lll}
+            \toprule
+            \textbf{Primitive} & \textbf{Scope} & \textbf{Purpose} \\
+            \midrule
+            \texttt{active\_tasks\_mutex} & Task Registry & Prevents race conditions during task activation/deactivation. \\
+            \texttt{mutex} & Client Buffer & Ensures atomic assignment of client slots. \\
+            \texttt{free\_slots\_sem} & Capacity Control & Semaphore-based management of the $n$-capacity task array. \\
+            \texttt{roomAvailable} & Client Throttling & Condition variable to block client connection if the server is at capacity. \\
+            \bottomrule
+        \end{tabular}
+    \end{table}
+\end{frame}
+
+% 8. Timing Logic (The "Deep" Engineering)
+\section{Timing}
+\begin{frame}{Real-Time Execution: Mitigating Cumulative Drift}
+    A naive implementation using \texttt{sleep(period)} suffers from \textbf{Cumulative Drift}, where the error $\epsilon = \text{ExecutionTime}$ accumulates every cycle.
+
+    \begin{itemize}
+        \item \textbf{Our Approach:} We utilize \texttt{clock\_nanosleep} with the \texttt{TIMER\_ABSTIME} flag.
+        \item \textbf{Logic:} We maintain an absolute wake-up timestamp $T_{next}$.
+    \end{itemize}
+
+    \begin{block}{Algorithm for Periodicity}
+        \begin{enumerate}
+            \item $T_{start} \leftarrow$ current monotonic time.
+            \item \textbf{Loop:}
+            \begin{itemize}
+                \item Execute $Routine(\tau_i)$.
+                \item $T_{next} \leftarrow T_{next} + P_i$.
+                \item \texttt{clock\_nanosleep(CLOCK\_MONOTONIC, TIMER\_ABSTIME, \&T_{next})}.
+            \end{itemize}
+        \end{enumerate}
+    \end{block}
+    \textit{This ensures that the jitter is minimized and the phase of the task remains constant relative to the system clock.}
+\end{frame}
+
+% 9. Implementation Details (Technical Stack)
+\section{Implementation}
+\begin{frame}{Technical Implementation Details}
+    \begin{columns}
+        \begin{column}{0.5\textwidth}
+            \textbf{Low-Level Primitives}
+            \begin{itemize}
+                \item \textbf{Language:} C (Systems level).
+                \item \textbf{OS:} Linux (POSIX threads).
+                \item \textbf{Clock:} \texttt{CLOCK\_MONOTONIC} (Non-adjustable).
+                \item \textbf{Network:} TCP/IP Sockets.
+            \end{itemize}
+        \end{column}
+        \begin{column}{0.5\textwidth}
+            \textbf{Complexity Analysis}
+            \begin{itemize}
+                \item \textbf{RTA Complexity:} $O(n^2)$ in the worst case per activation.
+                \item \textbf{Space Complexity:} $O(1)$ for task catalog; $O(N_{max})$ for active tasks.
+            \end{itemize}
+        \end{column}
+    \end{columns}
+\end{frame}
+
+% 10. Stress Testing & Validation
+\section{Validation}
+\begin{frame}{Validation: Stress Testing \& Robustness}
+    To validate the concurrency and schedulability, we implemented a \textbf{Stress Test Suite}:
+    \begin{itemize}
+        \item \textbf{Scenario:} 6 simultaneous clients attempting to activate/deactivate overlapping task pairs.
+        \item \textbf{Concurrency Check:} Verification that the \texttt{tasks\_active} array maintains integrity under high-frequency requests.
+        \item \textbf{Schedulability Check:} Forcing the system into the $U > 1.0$ and $U \in (0.69, 1.0)$ regimes to validate the RTA engine's response.
+    \end{itemize}
+    \begin{exampleblock}{Observed Result}
+        The system successfully rejects unschedulable tasks while maintaining stable periodic execution for all valid tasks, even under heavy network load.
+    \end{exampleblock}
+\end{frame}
+
+% 11. Conclusion
+\section{Conclusion}
+\begin{frame}{Conclusion}
+    \begin{itemize}
+        \item \textbf{Summary:} We have designed a robust, concurrent simulation of a real-time task scheduler.
+        \item \textbf{Key Contributions:}
+        \begin{itemize}
+            \item Mathematically rigorous schedulability verification (RTA).
+            \item Deterministic execution via absolute-time monotonic sleeping.
+            \item Thread-safe orchestration of dynamic task sets.
+        \end{itemize}
+        \item \textbf{Future Extensions:}
+        \begin{itemize}
+            \item Implementation of Earliest Deadline First (EDF) scheduling.
+            \item Integration of Priority Inheritance to mitigate Priority Inversion.
+        \end{itemize}
+    \end{itemize}
+    \vspace{0.5cm}
+    \centering
+    \textbf{\Large Thank you for your attention. Questions?}
+\end{frame}
