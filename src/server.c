@@ -460,7 +460,7 @@ static void addclient(int current_socket, struct sockaddr_in *retSin)
     if (pthread_create(
             &client->thread,
             NULL,
-            connectionHandler,
+            connect;ionHandler,
             client
         ) != 0)
     {
