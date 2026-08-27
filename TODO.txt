@@ -3,8 +3,3 @@ TODO
 
     [SERVER] receive failed before command: client exited
     [SERVER] currSd value was: 4
-
-
-
-client 
-    wtf are those \n after verbose?
