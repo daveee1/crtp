@@ -55,11 +55,11 @@ typedef enum {
 
 /* Helper function to map command strings to enum values */
 static CommandType parse_command(const char *cmd) {
-    if (!strcmp(cmd, "help")) return CMD_HELP;
-    else if (!strcmp(cmd, "stop")) return CMD_STOP;
+    if (!strcmp(cmd, "stop")) return CMD_STOP;
     else if (!strcmp(cmd, "quit")) return CMD_QUIT;
     else if (strstr(cmd, "ACTIVATE") != NULL) return CMD_ACTIVATE;
     else if (strstr(cmd, "BLOCK") != NULL ) return CMD_DEACTIVATE;
+    return CMD_HELP;
 }
 
 

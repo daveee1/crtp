@@ -52,10 +52,35 @@ Hierarchy]
         server never blocked by accepting clients
     a thread for each task too
 
-[Synchronization and Resource
-Management]
+[Synchronization and Resource Management]
     MOST IMPORTANT part, how my Architecture works?
     // Read
 
+"Dual semaphores are designed for a bounded Producer-Consumer queue with a 
+pre-allocated pool of worker threads constantly waiting to pop work.
+ Because my architecture spawns client handler threads dynamically with pthread_create(),
+  there is no consumer queue. Using a Mutex and Condition Variable (roomAvailable)
+allows the main thread to safely inspect the buffer, throttle when
+ capacity reaches MAX_THREADS, and cleanly track client state."
+
+[Timing Control]
+how to manage tasks? each will be reactivted af3ter current time 
+plus its period, when finished execution wait till Tnext
+
+[DRAWING]
+clients send a command to the server which
+ activates or deactivates a task
+
+ all other commands discarded by the client
 
 
+[conclusions]
+    Compare Rate Monotonic with alternative fixed-priority
+policies because this project is set only for fixed priority policies (not EDF)
+    •Extend evaluation to dynamic-priority algorithms (e.g., EDF).
+    •Evaluate system performance under high CPU utilization and
+    overloaded conditions
+
+    Pool of Threads
+
+TY for your attention

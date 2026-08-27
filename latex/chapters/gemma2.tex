@@ -162,9 +162,6 @@ To prevent race conditions in a multi-threaded, multi-client environment, we emp
             \item Use \texttt{clock\_nanosleep} with \texttt{TIMER\_ABSTIME}.
         \end{enumerate}
     \end{exampleblock}
-
-    \textbf{Handling Nanosecond Overflows:}
-    The code manually adjusts \texttt{tv\_sec} and \texttt{tv\_nsec} to handle the overflow where $nsec \ge 10^9$, ensuring the kernel receives a valid \texttt{timespec} structure.
 \end{frame}
 
 % --- Slide 10: Control Flow Summary ---
