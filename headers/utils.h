@@ -45,7 +45,7 @@ void print_analysis(const char *format, ...);
 int receive(int sd, char *retBuf, int size);
 
 extern int verbose;
-extern pthread_mutex_t log_mutex; // TODO need it extern in print_active_tasks() defined in server.c
+extern pthread_mutex_t log_mutex;
 
 
 #endif             /* 3. End of guard */

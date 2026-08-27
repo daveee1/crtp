@@ -75,7 +75,7 @@ static int parse_task_number(const char *command) {
 }
 
 // TODO explain better
-/* Thread routine. It calls routine handleConnection() */
+/* Thread routine. It gets called by routine handleConnection() */
 static void *handling_active_task(void *task)
 {
     ActiveTask *t = (ActiveTask*)task; // make it a 'Client' object

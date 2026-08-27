@@ -140,8 +140,8 @@ To prevent race conditions in a multi-threaded, multi-client environment, we emp
    \begin{description}
         \item[Mutexes:]
             \begin{itemize}
-                \item \texttt{active\_tasks\_mutex}: Protects task array and RTA.
-                \item \texttt{mutex}: Synchronizes client connection buffer.
+                \item \texttt{active\_tasks\_mutex}: Protects task array.
+                \item \texttt{mutex\_clients\_array}: Synchronizes client connection buffer.
                 \item \texttt{log\_mutex}: Ensures atomic, clean logging output.
             \end{itemize}
         \item[Semaphores:] \texttt{free\_slots\_sem} limits concurrent active tasks.

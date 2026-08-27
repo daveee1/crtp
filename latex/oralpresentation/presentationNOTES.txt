@@ -1,0 +1,61 @@
+Morning : Im Davide Furlan, i decided to take exercise number 5
+to create an efficient and "simple" TCP\IP server .
+
+[INTRO]
+    [HPs] RM scheduling and RTA (corresponds to U + RTA)
+    we must handle concurrency not to activate but to deactivate tasks
+
+[REQUIREMENTS]
+    each task is extremely basic consists of C, P, D
+    in particular note that C was computed through "time" function
+
+    as i said before tasks can be activated/deactivated by a client's command
+
+    rsc.s limits: compilation time you can handle how many clients
+        and tasks can be active at the same time
+
+    DETERMINISM handled by clocks: JITTER prob (Postponed Period - Actual Period)
+
+[High-Level Architecture]    
+    client sends request
+    server accepts it and evaluates through RTA
+
+[Data Structures & Task Modeling]
+    nothing new till now: i used two different Tasks Structures 
+        TASK useful for TASKCATALOG which can be compared to a menu
+            has id, C, P, D, routine which is the for loop to be executed
+
+        ActiveTask as the name says has these variables which lets me know
+        who called this task and when
+
+    why differentiate them? 
+        "The TASK_CATALOG acts as the "Read-Only" truth, while
+        tasks_active represents the "Mutable" state of the system."
+        
+        NOTE a task can be NOT schedulable, activeTask is a task which is it
+
+    
+[Schedulability Policy: The
+Decision Engin]
+    U < 100% of the CPU
+    middle condition
+    RTA condition
+
+[RTA]
+    Read
+    Ri>Di
+
+[Concurrency Model: Threading
+Hierarchy]
+
+    for each client a Thread connectioHandler
+        server never blocked by accepting clients
+    a thread for each task too
+
+[Synchronization and Resource
+Management]
+    MOST IMPORTANT part, how my Architecture works?
+    // Read
+
+
+
