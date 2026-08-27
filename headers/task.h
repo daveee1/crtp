@@ -23,7 +23,7 @@ typedef struct{
 typedef struct {
     int task_id;     
     int position;     // in the tasks_active array
-    int instance_id;     // Unique identifier (e.g., slot index + 1)
+    int instance_id;     // Unique identifier (which task came first?)
     int active;          // 1 if running, 0 if free slot
     int client_owner_fd; // Socket FD of the client that owns this thread
     int client_port;

@@ -55,6 +55,7 @@ static void init_active_task(ActiveTask *t, int position){
 }
 
 void init_active_tasks(){
+    print_server("ACTIVE TASKS initialized");
     pthread_mutex_lock(&active_tasks_mutex);
     for (int i = 0; i < MAX_NUMBER_ACTIVE_TASKS; i++)
         init_active_task(&tasks_active[i], i);

@@ -21,8 +21,6 @@
 typedef struct {
     int socket_fd;
     int position; // id in the buffer
-    int satisfied;  // were all its tasks managed? 1 yes, 0 no
-    int ntasks;
     char ip[16];
     int port;
     pthread_t thread; // will be filled automatically by pthread_create()
@@ -36,7 +34,7 @@ Client clients[MAX_THREADS];
 int close_server = 0;
 
 // MUTEXes
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_clients_array = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutexstopserver = PTHREAD_MUTEX_INITIALIZER;  // necessary to overwrite correcly variable close_server
 
 // SEMAPHORES
@@ -160,9 +158,9 @@ static void rmvclient_unlocked(Client *client) {
 
 /* 2. PUBLIC WRAPPER: Locks mutex, calls unlocked helper, unlocks mutex */
 static void rmvclient(Client *client) {
-    pthread_mutex_lock(&mutex);
+    pthread_mutex_lock(&mutex_clients_array);
     rmvclient_unlocked(client);
-    pthread_mutex_unlock(&mutex);
+    pthread_mutex_unlock(&mutex_clients_array);
 }
 
 static void print_active_tasks(Client *c) {
@@ -431,14 +429,14 @@ static void addclient(int current_socket, struct sockaddr_in *retSin)
     print_server("[CLIENT MUTEX] [CLIENT %d] WAITING ", port);
     
     
-    pthread_mutex_lock(&mutex);
+    pthread_mutex_lock(&mutex_clients_array);
     print_server("[CLIENT MUTEX] [CLIENT %d] ACQUIRED ", port);
 
     int free_position = findFreePosition();
 
     while (free_position == -1) {
         print_server_warning("Max clients capacity reached. Waiting for space...\n");
-        pthread_cond_wait(&roomAvailable, &mutex);
+        pthread_cond_wait(&roomAvailable, &mutex_clients_array);
         free_position = findFreePosition();
     }
 
@@ -466,14 +464,14 @@ static void addclient(int current_socket, struct sockaddr_in *retSin)
             client
         ) != 0)
     {
-        pthread_mutex_unlock(&mutex);
+        pthread_mutex_unlock(&mutex_clients_array);
         print_server_error("pthread_create failed");
         print_server("[CLIENT MUTEX] [CLIENT %d] RELEASED ", port);
         /* Undo the allocation of this slot */
         client->active = 0;
         return;
     }
-    pthread_mutex_unlock(&mutex);
+    pthread_mutex_unlock(&mutex_clients_array);
     print_server("[CLIENT MUTEX] [CLIENT %d] RELEASED ", port);
 
 
@@ -489,7 +487,7 @@ At the end of the program, before closing, the server sends to each
 active client a SHUTDOWN message.
 */
 static void closing_broadcast_to_clients(){
-    pthread_mutex_lock(&mutex);
+    pthread_mutex_lock(&mutex_clients_array);
     
     const char *shutdown_msg = "SERVER_SHUTDOWN";
     int msg_len = strlen(shutdown_msg);
@@ -516,7 +514,7 @@ static void closing_broadcast_to_clients(){
     }
 
     print_server("SERVER_SHUTDOWN: end");
-    pthread_mutex_unlock(&mutex);
+    pthread_mutex_unlock(&mutex_clients_array);
 }
 
 static int closing_server(int sock){
@@ -533,12 +531,12 @@ static void init_client(Client *c){
 }
 
 static void init_clients_buffer(){
-    pthread_mutex_lock(&mutex);
+    pthread_mutex_lock(&mutex_clients_array);
     print_server("init CLIENTS BUFFER");
     for(int i = 0; i < MAX_THREADS; i++)
         init_client(&clients[i]);
     
-    pthread_mutex_unlock(&mutex);
+    pthread_mutex_unlock(&mutex_clients_array);
 }
 
 
@@ -655,7 +653,7 @@ int main(int argc, char *argv[]){
     closing_server(server_socket);
 
     // Destroy mutexes and condition variables
-    pthread_mutex_destroy(&mutex);
+    pthread_mutex_destroy(&mutex_clients_array);
     pthread_mutex_destroy(&mutexstopserver);
     pthread_cond_destroy(&roomAvailable);
     pthread_mutex_destroy(&active_tasks_mutex);
