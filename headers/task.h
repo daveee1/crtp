@@ -8,7 +8,7 @@
 #include <limits.h> // needed to use INT_MAX as lowest_instance in 'find_instance_to_deactivate()'
 
 
-#define MAX_NUMBER_ACTIVE_TASKS 4
+#define MAX_NUMBER_ACTIVE_TASKS 8
 
 
 
@@ -36,7 +36,7 @@ extern ActiveTask tasks_active[MAX_NUMBER_ACTIVE_TASKS];
 extern pthread_mutex_t active_tasks_mutex;
 extern sem_t free_slots_sem;
 
-int add_active_task(ActiveTask *new_task);
+int add_active_task_and_return_position(ActiveTask *new_task);
 int find_and_remove_active_task(ActiveTask *at);
 void init_active_tasks();
 int find_free_pos_in_tasksactive();

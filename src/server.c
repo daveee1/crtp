@@ -16,7 +16,7 @@
 #include <errno.h> 
 
 
-#define MAX_THREADS 5
+#define MAX_THREADS 10
 
 typedef struct {
     int socket_fd;
@@ -300,15 +300,15 @@ static void handleConnection(Client *c)
 
                 if(is_schedulable(candidate_task) == -1){
                     // task NOT SCHEDULABLE
-                    print_server("[CLIENT %d] TASK %d NOT SCHEDULABLE", c->port, task_number);
+                    print_server_warning("[CLIENT %d] TASK %d NOT SCHEDULABLE", c->port, task_number);
 
                     answer = strdup("TASK_REJECTED: System unschedulable (Deadline miss risk)");
                 }
                 else{
                     // task SCHEDULABLE: add it to 'active_tasks' array!
-                    int free_pos = add_active_task(&candidate_task);
+                    int free_pos = add_active_task_and_return_position(&candidate_task);
                     if(free_pos == -1){
-                        print_server("FULL CAPACITY, retry or deactivate!");
+                        print_server_warning("FULL CAPACITY for tasks_active array, retry or deactivate!");
                         answer = strdup("FULL CAPACITY tasks_active[]");
                         break;
                     }

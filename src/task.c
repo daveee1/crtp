@@ -42,10 +42,10 @@ static void run_task4_unlocked(void) {
 
 // taskid, cpuusage, period, deadline, routine
 const Task TASK_CATALOG[] = {
-    {1,  300, 1000, 900, run_task1_unlocked},
-    {2,  150,  500,  350, run_task2_unlocked},
-    {3,   80,  400,  300, run_task3_unlocked},
-    {4,   20,  100,  80, run_task4_unlocked}
+    {1,  300, 100000, 90000, run_task1_unlocked},
+    {2,  150,  50000,  3500, run_task2_unlocked},
+    {3,   80,  4000,  3000, run_task3_unlocked},
+    {4,   20,  1000,  800, run_task4_unlocked}
 };
 
 static void init_active_task(ActiveTask *t, int position){
@@ -65,6 +65,7 @@ void init_active_tasks(){
 }
 
 int find_free_pos_in_tasksactive(){
+
     for(int i = 0; i < MAX_NUMBER_ACTIVE_TASKS; i++){
         if(tasks_active[i].active == 0)
             return i;
@@ -76,9 +77,14 @@ int find_free_pos_in_tasksactive(){
 add new task into 'active_tasks' array.
 [Return] position where the task is stored.
 */
-int add_active_task(ActiveTask *new_task){
-    sem_wait(&free_slots_sem);  // is there space for a new task?
-    
+int add_active_task_and_return_position(ActiveTask *new_task){
+    // Try to take a slot without blocking thread execution
+    if (sem_trywait(&free_slots_sem) != 0) { // if different from 0 it FAILED
+        // Slot array is FULL
+        print_server("[tasks_active] CANNOT ADD: All %d slots are full!", MAX_NUMBER_ACTIVE_TASKS);
+        return -1;
+    }
+
     print_server("[tasks_active MUTEX] [CLIENT %d] ADD task %d WAITING",  new_task->client_port, new_task->task_id );
     
     // acquire mutex
@@ -86,7 +92,7 @@ int add_active_task(ActiveTask *new_task){
     
     print_server("[tasks_active MUTEX] [CLIENT %d] ADD task %d ACQUIRED",  new_task->client_port,  new_task->task_id);
     
-    int free_pos = find_free_pos_in_tasksactive(); // there must be since free_slots_sem > 1
+    int free_pos = find_free_pos_in_tasksactive(); // there must be since free_slots_sem >= 1
     if (free_pos == -1) {
         pthread_mutex_unlock(&active_tasks_mutex);
         print_server("[tasks_active MUTEX] [CLIENT %d] NO POS in ADD task %d RELEASED", new_task->client_port, new_task->task_id);

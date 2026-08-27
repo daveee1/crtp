@@ -220,6 +220,7 @@ int main(int argc, char **argv)
 
             if (fgets(input, sizeof(input), stdin) == NULL){
                 print_client_error("fgets()");
+                // break;
                 exit(1);
             }
             int len = (int)strlen(input);

@@ -3,7 +3,8 @@
 HOST="localhost"
 PORT=8080
 VERBOSE=8
-HOLD_TIME=0.5
+HOLD_TIME=2
+WAIT_TIME=3
 
 run_client_session() {
     CLIENT_ID=$1
@@ -13,16 +14,16 @@ run_client_session() {
     (
         # Activate two tasks
         echo "a $TASK_A"
-        sleep 0.5
+        sleep $HOLD_TIME
         echo "a $TASK_B"
         
-        sleep $HOLD_TIME
+        sleep $WAIT_TIME
         
         # Deactivate ONLY the exact tasks this client activated
         echo "b $TASK_A"
-        sleep 0.5
+        sleep $HOLD_TIME
         echo "b $TASK_B"
-        sleep 0.5
+        sleep 10
         echo "quit"
         sleep 0.2
     ) | ./build/client $HOST $PORT $VERBOSE
