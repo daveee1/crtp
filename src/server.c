@@ -16,7 +16,7 @@
 #include <errno.h> 
 
 
-#define MAX_THREADS 10
+#define MAX_THREADS 100
 
 typedef struct {
     int socket_fd;
