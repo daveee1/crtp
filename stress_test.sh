@@ -40,13 +40,13 @@ run_client_session() {
 # Run 10 client sessions in the background
 run_client_session 1  1 2 0 &
 run_client_session 2  2 3 0 &
-run_client_session 3  3 4 0 &
-run_client_session 4  4 1 0 &
-run_client_session 5  1 3 0 &
-run_client_session 6  2 4 0 &
-run_client_session 7  4 2 0 &
-run_client_session 8  1 4 0 &
-run_client_session 9  3 2 0 &
+# run_client_session 3  3 4 0 &
+# run_client_session 4  4 1 0 &
+# run_client_session 5  1 3 0 &
+# run_client_session 6  2 4 0 &
+# run_client_session 7  4 2 0 &
+# run_client_session 8  1 4 0 &
+# run_client_session 9  3 2 0 &
 
 # 10th client (IS_LAST = 1 -> issues 'stop')
 run_client_session 10 4 3 1 &

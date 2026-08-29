@@ -172,51 +172,47 @@ static void rmvclient(Client *client) {
 }
 
 static void print_active_tasks(Client *c) {
-
-    // 1. Take a local snapshot of the task buffer (Fast Critical Section)
-    ActiveTask snapshot[MAX_NUMBER_ACTIVE_TASKS];
     int count = 0;
 
+    // 1. Lock BOTH data state and console log to prevent data races and text interleaving
     pthread_mutex_lock(&active_tasks_mutex);
-    for (int i = 0; i < MAX_NUMBER_ACTIVE_TASKS; i++) {
-        snapshot[i] = tasks_active[i];
-        if (snapshot[i].active == 1) {
-            count++;
-        }
-    }
-    pthread_mutex_unlock(&active_tasks_mutex); // Release data lock IMMEDIATELY
-
-    print_printingTASK("[CLIENT %d] printing tasks WAITING", c->port);
-    // 2. Lock ONLY the console log mutex to print the table atomically
     pthread_mutex_lock(&log_mutex);
-    printf("[CLIENT %d] printing tasks ACQUIRED", c->port);
+
+    printf("[CLIENT %d] printing tasks WAITING\n", c->port);
+    printf("[CLIENT %d] printing tasks ACQUIRED\n", c->port);
 
     printf("\n+---+------------------+---------+------------------+\n");
     printf("| Slot| Client Port      | TASK_ID | Worker Thread ID |\n");
     printf("+---+------------------+---------+------------------+\n");
 
+    // 2. Iterate directly over the real active tasks array
+    for (int i = 0; i < MAX_NUMBER_ACTIVE_TASKS; i++) {
+        if (tasks_active[i].active == 1) {
+            count++;
+            printf("|  %-2d | Port: %-10d | Task: %-1d | ThreadID: %-5d|\n",
+                   i,
+                   tasks_active[i].client_port, 
+                   tasks_active[i].task_id, 
+                   tasks_active[i].instance_id);
+        }
+    }
+
     if (count == 0) {
         printf("|       --- No Active Tasks Running ---        |\n");
-    } else {
-        for (int i = 0; i < MAX_NUMBER_ACTIVE_TASKS; i++) {
-            if (snapshot[i].active == 1) {
-                printf("|  %-2d | Port: %-10d | Task: %-1d | ThreadID: %-5d|\n",
-                       i,
-                       snapshot[i].client_port, 
-                       snapshot[i].task_id, 
-                       snapshot[i].instance_id);
-            }
-        }
     }
 
     printf("+---+------------------+---------+------------------+\n");
     printf(" Total Active Tasks: %d / %d\n\n", count, MAX_NUMBER_ACTIVE_TASKS);
 
-    fflush(stdout); // Guarantee all text hits terminal before releasing
-    pthread_mutex_unlock(&log_mutex);
-    print_printingTASK("[CLIENT %d] printing tasks RELEASED\n", c->port);
+    printf("[CLIENT %d] printing tasks RELEASED\n\n", c->port);
 
+    fflush(stdout);
+
+    // 3. Unlock in reverse order
+    pthread_mutex_unlock(&log_mutex);
+    pthread_mutex_unlock(&active_tasks_mutex);
 }
+
 
 /* Handle an established  connection
    routine receive is listed in the previous example.
