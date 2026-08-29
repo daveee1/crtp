@@ -2,7 +2,7 @@
 
 HOST="localhost"
 PORT=8080
-VERBOSE=0 # Kept low to avoid terminal bottleneck
+VERBOSE=2 # Kept low to avoid terminal bottleneck
 NUM_CLIENTS=100
 
 run_chaotic_client() {

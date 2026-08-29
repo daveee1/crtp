@@ -164,7 +164,7 @@ static void rmvclient(Client *client) {
 }
 
 static void print_active_tasks(Client *c) {
-    print_server("[CLIENT %d] printing tasks WAITING", c->port);
+    printf("[CLIENT %d] printing tasks WAITING", c->port);
 
     // 1. Take a local snapshot of the task buffer (Fast Critical Section)
     ActiveTask snapshot[MAX_NUMBER_ACTIVE_TASKS];
