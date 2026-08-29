@@ -17,7 +17,7 @@
     Return -1 if : error in receive or server's ans = 'SERVER_SHUTDOWN'
     Return 1 if: otherwise
     */
-static int handle_server_answer(int socket){
+static int handle_server_answer(int socket, int port_client){
     unsigned int netLen;
     int len;
     
@@ -48,7 +48,7 @@ static int handle_server_answer(int socket){
         return -1;
     }
     answer[len] = '\0';
-    print_client(answer);
+    print_client("SERVER answer to %d is: %s", port_client, answer);
 
     if(!strcmp(answer, "SERVER_SHUTDOWN")){
         free(answer);
@@ -103,14 +103,24 @@ static const char* format_server_payload(ClientCmdType cmd) {
         case CLIENT_CMD_DEACTIVATE_TASK2: return "BLOCK 2";
         case CLIENT_CMD_DEACTIVATE_TASK3: return "BLOCK 3";
         case CLIENT_CMD_DEACTIVATE_TASK4: return "BLOCK 4";
-        case CLIENT_CMD_HELP:  return "help";
         case CLIENT_CMD_QUIT:  return "quit";
         case CLIENT_CMD_STOP:  return "stop";
-        default:               return NULL;
+        default:               return "help";
     }
 }
 
 
+
+
+// Helper to retrieve the ephemeral port assigned to this client socket
+int get_my_client_port(int socket_fd) {
+    struct sockaddr_in local_addr;
+    socklen_t addr_len = sizeof(local_addr);
+    if (getsockname(socket_fd, (struct sockaddr *)&local_addr, &addr_len) == 0) {
+        return ntohs(local_addr.sin_port); // Returns port like 57820
+    }
+    return -1;
+}
 
 
 /* Main client program. The IP address and the port number of
@@ -123,10 +133,11 @@ int main(int argc, char **argv)
     char hostname[100];
     char command[256];
     char *answer;
-    int  client_socket;
-    int client_port;
+    int client_socket;
+    int server_port;
     int len;
     unsigned int netLen;
+    int my_client_port = 0;
     struct sockaddr_in sin;
     struct hostent *hp;
 
@@ -144,16 +155,16 @@ int main(int argc, char **argv)
     }
 
     // get port
-    if (sscanf(argv[2], "%d", &client_port) != 1 || client_port <= 0 || client_port > 65535) {
+    if (sscanf(argv[2], "%d", &server_port) != 1 || server_port <= 0 || server_port > 65535) {
         print_client_error("Invalid port number");
         exit(EXIT_FAILURE);
     }
 
     // Parse VERBOSE 
     if (sscanf(argv[3], "%d", &verbose) == 1 && (verbose > 0 ))
-        print_client("Verbose set to %d", verbose);
+        print_client(" Verbose set to %d", verbose);
     else 
-        print_client("Invalid verbose input, defaulting to 0\n");
+        print_client(" Invalid verbose input, defaulting to 0");
 
 
 
@@ -161,7 +172,7 @@ int main(int argc, char **argv)
     in the struct hostent variable */
     if ((hp = gethostbyname(hostname)) == 0)
     {
-        print_client_error("ERROR gethostbyname");
+        print_client_error(" ERROR gethostbyname");
         exit(1);
     }
 
@@ -169,7 +180,7 @@ int main(int argc, char **argv)
     memset(&sin, 0, sizeof(sin));
     sin.sin_family = AF_INET;
     sin.sin_addr.s_addr = ((struct in_addr *)(hp->h_addr_list[0]))->s_addr;
-    sin.sin_port = htons(client_port);
+    sin.sin_port = htons(server_port);
     
     /* create a new socket */
     if ((client_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1)
@@ -182,11 +193,12 @@ int main(int argc, char **argv)
     specified in struct sockaddr_in */
     if (connect(client_socket,(struct sockaddr *)&sin, sizeof(sin)) == -1)
     {
-        print_client_error("ERROR connect");
+        print_client_error(" ERROR connect");
         exit(1);
     }
 
-    print_client("Enter command: \n");
+    my_client_port = get_my_client_port(client_socket);
+    print_client("[%d] Enter command:", my_client_port);
 
     while(1)
     {
@@ -198,29 +210,30 @@ int main(int argc, char **argv)
 
         fflush(stdout); /* Force prompt to display without waiting for newline */
         
-        int max_fd = (client_socket > STDIN_FILENO) ? client_socket : STDIN_FILENO;
+        
+        int max_fd = (client_socket > STDIN_FILENO) ? client_socket : STDIN_FILENO; //necessary to select to know highest socket
         int activity = select(max_fd + 1, &read_fds, NULL, NULL, NULL);
         if(activity < 0){
-            print_client_error("SELECT error");
+            print_client_error(" [%d] SELECT error", my_client_port);
             exit(1);
         }
         
 
         //1) activity detected: server answered!
         if(FD_ISSET(client_socket, &read_fds)){
-            if(handle_server_answer(client_socket) == -1)  // SERVER ANS: server stopped or it closed our client...
+            if(handle_server_answer(client_socket,my_client_port) == -1)  // SERVER ANS: if server stopped or it closed our client EXIT from loop
                 break;    
-            print_client("enter command: request task {1-4}");
+            print_client(" [%d] enter command: request task {1-4}", my_client_port);
             fflush(stdout);
         }
 
-        //2) input by user detected
+        //2) input by user detected or bash file detected
         if(FD_ISSET(STDIN_FILENO, &read_fds) > 0){
             char input[50];
 
             if (fgets(input, sizeof(input), stdin) == NULL){
-                print_client_error("fgets()");
-                // break;
+                print_client("[%d] STDIN reached EOF (script finished). Waiting for server answers...", my_client_port);
+                // continue; // reached EOF, now we wait select option 1 (server answers)
                 exit(1);
             }
             int len = (int)strlen(input);
@@ -230,20 +243,21 @@ int main(int argc, char **argv)
             cmd = parse_user_input(input);
             /* Filter out invalid commands early */
             if (cmd == CLIENT_CMD_INVALID) {
-                print_client_warning("Invalid choice! Enter a/b 1-4 for tasks or 'help', 'quit', 'stop'.");
-                continue; // Don't send anything to server, prompt again
+                print_client_warning("[%d] Invalid choice! Enter a/b 1-4 for tasks or 'help', 'quit', 'stop'.", my_client_port);
+                continue;
             }
 
             const char *command = format_server_payload(cmd);
+
             // send command lenght
             len = strlen(command);
             unsigned int netLen = htonl(len);
             if(send(client_socket, &netLen, sizeof(netLen), 0) < 0){
-                print_client_error("SENDing request # of chars to server");
+                print_client_error("[%d] SENDing request # of chars to server", my_client_port);
                 break;
             }
             if(send(client_socket, command, len, 0) < 0){
-                print_client_error("SENDing command to server");
+                print_client_error("[%d] SENDing command to server", my_client_port);
                 break;
             }
         }

@@ -10,7 +10,7 @@ typedef struct {
 
 
 
-static int utilization_factor(ActiveTask new_active_task) {
+static int utilization_factor(ActiveTask * new_active_task) {
     long double sum = 0.0;
 
     /* 1. Sum utilization over all currently active tasks */
@@ -26,7 +26,7 @@ static int utilization_factor(ActiveTask new_active_task) {
     }
 
     /* 2. Add candidate task utilization to the final sum */
-    const Task *new_task = &TASK_CATALOG[new_active_task.task_id - 1];
+    const Task *new_task = &TASK_CATALOG[new_active_task->task_id - 1];
     sum += (long double)new_task->cpu_usage / new_task->period;
 
     /* 3. Check hard physical limit (CPU Over-utilization) */
@@ -63,7 +63,7 @@ static int compare_rms_priority(const void *a, const void *b) {
     called when utilization factor returns 0. 
     Returns 1 iff new_active_task is schedulable
 */
-static int rta(ActiveTask new_active_task){
+static int rta(ActiveTask *new_active_task){
     /*
         I need for each active_task j: 
             1) its period_j to determine its priority
@@ -88,7 +88,7 @@ static int rta(ActiveTask new_active_task){
     pthread_mutex_unlock(&active_tasks_mutex);
     
     // 2. add newtask in the fake array
-    const Task *new_catalog_entry = &TASK_CATALOG[new_active_task.task_id - 1];
+    const Task *new_catalog_entry = &TASK_CATALOG[new_active_task->task_id - 1];
     eval_set[total_tasks].task_id = new_catalog_entry->id;
     eval_set[total_tasks].cpu_usage = new_catalog_entry->cpu_usage;
     eval_set[total_tasks].period = new_catalog_entry->period;
@@ -134,24 +134,24 @@ static int rta(ActiveTask new_active_task){
 Given all the current active tasks tell me if we can schedule
  or not the new task
 */
-int is_schedulable(ActiveTask new_active_task){
+int is_schedulable(ActiveTask *new_active_task){
     int u = utilization_factor(new_active_task);
-    char s[50];
+    char s[60];
     if(u == 1){
-        snprintf(s, sizeof(s), "schedulable task %d by Utilization factor\n", new_active_task.task_id);
+        snprintf(s, sizeof(s), "[CLIENT %d] schedulable task %d by Utilization factor", new_active_task->client_port, new_active_task->task_id);
         print_analysis(s);
         return 1;
     }
 
     else if(u == 0){
         if(rta(new_active_task)){
-            snprintf(s, sizeof(s), "schedulable task %d by RTA\n", new_active_task.task_id);
+            snprintf(s, sizeof(s), "[CLIENT %d] schedulable task %d by RTA", new_active_task->client_port, new_active_task->task_id);
             print_analysis(s);
             return 1;
         }
     }
     
-    snprintf(s, sizeof(s), "NOT SCHEDULABLE task %d\n", new_active_task.task_id);
+    snprintf(s, sizeof(s), "[CLIENT %d]NOT SCHEDULABLE task %d", new_active_task->client_port, new_active_task->task_id);
     print_analysis(s);
     
     return -1;

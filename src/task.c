@@ -81,7 +81,6 @@ int add_active_task_and_return_position(ActiveTask *new_task){
     // Try to take a slot without blocking thread execution
     if (sem_trywait(&free_slots_sem) != 0) { // if different from 0 it FAILED
         // Slot array is FULL
-        print_server("[tasks_active] CANNOT ADD: All %d slots are full!", MAX_NUMBER_ACTIVE_TASKS);
         return -1;
     }
 
@@ -145,14 +144,14 @@ in particular the lowest instance (first one that arrived).
 How? by setting that activetask in tasks_active to NOT active
 */
 int find_and_remove_active_task(ActiveTask *at){
-    print_server("[tasks_active MUTEX] [CLIENT %d] WAITING, task %d", 
+    print_server("[tasks_active MUTEX] [CLIENT %d] RMV task %d WAITING", 
         at->client_port,
         at->task_id);
 
     // acquire mutex
     pthread_mutex_lock(&active_tasks_mutex);
     
-    print_server("[tasks_active MUTEX] [CLIENT %d] ACQUIRED, task %d", 
+    print_server("[tasks_active MUTEX] [CLIENT %d] RMV task %d ACQUIRED", 
         at->client_port,
         at->task_id);
 
@@ -163,7 +162,7 @@ int find_and_remove_active_task(ActiveTask *at){
     if (pos == -1) {
         // no istance to deactivate
         pthread_mutex_unlock(&active_tasks_mutex);
-        print_server("[tasks_active MUTEX] [CLIENT %d] RELEASED: NO instance to deactivate task %d", at->client_port, at->task_id); 
+        print_server("[tasks_active MUTEX] [CLIENT %d] RMV RELEASED: NO instance to deactivate task %d", at->client_port, at->task_id); 
         return -1;
     }
 
@@ -174,10 +173,12 @@ int find_and_remove_active_task(ActiveTask *at){
     task->client_owner_fd = -1;
     task->task_id = -1;
     task->thread_id = -1;  
-    
+    task->client_port= -1;  
+    task->position = -1;
+
     pthread_mutex_unlock(&active_tasks_mutex);
 
-    print_server("[tasks_active MUTEX] [CLIENT %d] RELEASED, DEACTIVATED task %d in slot %d", 
+    print_server("[tasks_active MUTEX] [CLIENT %d] RMV task %d RELEASED, DEACTIVATED in slot %d", 
         at->client_port,
         at->task_id,
         pos);

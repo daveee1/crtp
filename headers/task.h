@@ -8,7 +8,7 @@
 #include <limits.h> // needed to use INT_MAX as lowest_instance in 'find_instance_to_deactivate()'
 
 
-#define MAX_NUMBER_ACTIVE_TASKS 8
+#define MAX_NUMBER_ACTIVE_TASKS 4
 
 
 

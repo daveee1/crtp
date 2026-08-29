@@ -16,7 +16,7 @@
 #include <errno.h> 
 
 
-#define MAX_THREADS 100
+#define MAX_THREADS 10
 
 typedef struct {
     int socket_fd;
@@ -78,10 +78,14 @@ static int parse_task_number(const char *command) {
 /* Thread routine. It gets called by routine handleConnection() */
 static void *handling_active_task(void *task)
 {
-    ActiveTask *t = (ActiveTask*)task; // make it a 'Client' object
+    ActiveTask *t = (ActiveTask*)task;
+    
     // i want to activate t.task_id...
+    // those fields could be overwritten therefore i save them!
     int pos = t->position;
-    int catalog_index = t->task_id - 1;
+    int catalog_index = t->task_id - 1;    
+    int current_task_id = t->task_id;
+    int current_task_client_port = t->client_port;
     
     if (catalog_index < 0 || catalog_index >= 4) 
         return NULL;
@@ -104,9 +108,14 @@ static void *handling_active_task(void *task)
         pthread_mutex_lock(&active_tasks_mutex);
         int is_active = tasks_active[pos].active;
         pthread_mutex_unlock(&active_tasks_mutex);
-
-        if (is_active == 0 || close_server == 1) {
-            print_server("STOP current task!");
+        
+        if (is_active == 0) {
+            print_server("DEACTIVATED current task %d, client port %d!", current_task_id, current_task_client_port);
+            break;
+        }
+        
+        if (close_server == 1) {
+            print_server("STOP current task %d, client port %d!", current_task_id, current_task_client_port);
             break;
         }
 
@@ -129,8 +138,6 @@ static void *handling_active_task(void *task)
         clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next_execution, NULL);
     }
 
-    //remove_active_task(t, pos);
-
     return NULL;
 }
 
@@ -144,14 +151,15 @@ static void rmvclient_unlocked(Client *client) {
         client->socket_fd = -1;
     }
 
-    /* 3. Mark the slot as inactive */
+    /* Mark the slot as inactive */
     client->active = 0;
+    client->position = -1;
     pthread_cond_signal(&roomAvailable);
-    
+
     /* Debugging */
-    print_client("CLOSED CLIENT: cl->%s, port->%d",
-        client->ip,
-        client->port
+    print_client("CLOSED CLIENT: port->%d, cl->%s",
+        client->port,
+        client->ip
     );
 }
 
@@ -164,7 +172,6 @@ static void rmvclient(Client *client) {
 }
 
 static void print_active_tasks(Client *c) {
-    printf("[CLIENT %d] printing tasks WAITING", c->port);
 
     // 1. Take a local snapshot of the task buffer (Fast Critical Section)
     ActiveTask snapshot[MAX_NUMBER_ACTIVE_TASKS];
@@ -179,6 +186,7 @@ static void print_active_tasks(Client *c) {
     }
     pthread_mutex_unlock(&active_tasks_mutex); // Release data lock IMMEDIATELY
 
+    print_printingTASK("[CLIENT %d] printing tasks WAITING", c->port);
     // 2. Lock ONLY the console log mutex to print the table atomically
     pthread_mutex_lock(&log_mutex);
     printf("[CLIENT %d] printing tasks ACQUIRED", c->port);
@@ -206,16 +214,16 @@ static void print_active_tasks(Client *c) {
 
     fflush(stdout); // Guarantee all text hits terminal before releasing
     pthread_mutex_unlock(&log_mutex);
+    print_printingTASK("[CLIENT %d] printing tasks RELEASED\n", c->port);
 
-    printf("[CLIENT %d] printing tasks RELEASED\n", c->port);
 }
 
 /* Handle an established  connection
    routine receive is listed in the previous example.
    The following cases are possible therefore managed:
     CMD_HELP: send help message
-    CMD_QUIT: stop the current connection of the current client
-    CMD_STOP: put close_server to 1
+    CMD_QUIT: stop the current connection of the current client by exiting the connection by a break, rmvclient() will close the current client
+    CMD_STOP: set close_server to 1
     CMD_ACTIVATE: activate according task
     CMD_DEACTIVATE: deactivate according task
 */
@@ -235,8 +243,7 @@ static void handleConnection(Client *c)
         If receive fails, the client most likely exited */
         if(receive(currSd, (char *)&netLen, sizeof(netLen))){
             // an error occured in the recv() method
-            print_server_warning("receive failed before command: client exited");
-            print_server_warning("currSd value was: %d", currSd);
+            print_server_warning("receive failed before command: client %d exited, currSd value was: %d", c->port, currSd);
             break;
         } 
         /* Convert from network byte order */
@@ -298,7 +305,7 @@ static void handleConnection(Client *c)
                 candidate_task.client_owner_fd = currSd;
                 candidate_task.client_port = c->port;
 
-                if(is_schedulable(candidate_task) == -1){
+                if(is_schedulable(&candidate_task) == -1){
                     // task NOT SCHEDULABLE
                     print_server_warning("[CLIENT %d] TASK %d NOT SCHEDULABLE", c->port, task_number);
 
@@ -308,15 +315,16 @@ static void handleConnection(Client *c)
                     // task SCHEDULABLE: add it to 'active_tasks' array!
                     int free_pos = add_active_task_and_return_position(&candidate_task);
                     if(free_pos == -1){
-                        print_server_warning("FULL CAPACITY for tasks_active array, retry or deactivate!");
+                        print_server_warning("[CLIENT %d] FULL CAPACITY for tasks_active array, retry or deactivate!", c->port);
                         answer = strdup("FULL CAPACITY tasks_active[]");
                         break;
                     }
                     
-                    // generate a thread for it
-                    if(pthread_create(&tasks_active[free_pos].thread_id, NULL, handling_active_task, &tasks_active[free_pos])){
+                    // generate a thread for the task
+                    if(pthread_create(&tasks_active[free_pos].thread_id, NULL, handling_active_task, &tasks_active[free_pos]) != 0){
                         print_server_error("Failed to spawn worker thread for task");
                         answer = strdup("ERROR: Thread creation failed");
+                        tasks_active[free_pos].active = 0;
                         break;
                     }
 
@@ -471,9 +479,12 @@ static void addclient(int current_socket, struct sockaddr_in *retSin)
         client->active = 0;
         return;
     }
+
+    // Detach thread so resources auto-reclaim on completion
+    pthread_detach(client->thread);
+
     pthread_mutex_unlock(&mutex_clients_array);
     print_server("[CLIENT MUTEX] [CLIENT %d] RELEASED ", port);
-
 
     /* Debugging */
     print_client("NEW CLIENT: ip->%s, port->%d",
@@ -487,6 +498,8 @@ At the end of the program, before closing, the server sends to each
 active client a SHUTDOWN message.
 */
 static void closing_broadcast_to_clients(){
+    print_server("SERVER_SHUTDOWN: waiting");
+    
     pthread_mutex_lock(&mutex_clients_array);
     
     const char *shutdown_msg = "SERVER_SHUTDOWN";
@@ -512,9 +525,9 @@ static void closing_broadcast_to_clients(){
             rmvclient_unlocked(current_client);
         }
     }
+    pthread_mutex_unlock(&mutex_clients_array);
 
     print_server("SERVER_SHUTDOWN: end");
-    pthread_mutex_unlock(&mutex_clients_array);
 }
 
 static int closing_server(int sock){
@@ -539,6 +552,17 @@ static void init_clients_buffer(){
     pthread_mutex_unlock(&mutex_clients_array);
 }
 
+static int check_number_of_active_clients(){
+    pthread_mutex_lock(&mutex_clients_array);
+    int tot = 0;
+    for(int i = 0; i < MAX_THREADS; i++){
+        if(clients[i].active == 1)
+            tot++;
+    }
+    pthread_mutex_unlock(&mutex_clients_array);
+
+    return tot;
+}
 
 
 
@@ -602,7 +626,7 @@ int main(int argc, char *argv[]){
     init_clients_buffer();
     init_active_tasks();
 
-    while(!close_server)
+    while(close_server == 0)
     {
         fd_set read_fds;    // necessary for SELECT
         FD_ZERO(&read_fds);   // as theory says...
@@ -617,7 +641,7 @@ int main(int argc, char *argv[]){
         int activity = select(server_socket + 1, &read_fds, NULL, NULL, &timeout); // server_soc + 1: highest fd + 1
         if(activity < 0){
             /* If select was interrupted by a signal, don't crash — just retry */
-            if (errno == EINTR) {
+            if (errno == EINTR) { //TODO
                 continue;
             }
 
@@ -650,7 +674,13 @@ int main(int argc, char *argv[]){
 
     // close each client still connected to the server
     closing_broadcast_to_clients();
-    closing_server(server_socket);
+    
+    // print remaining clients in the client structure
+    int res = check_number_of_active_clients();
+    if(res != 0){
+        print_server_error("CLIENTS not all released : %d remaining", res);
+        exit(1);
+    }
 
     // Destroy mutexes and condition variables
     pthread_mutex_destroy(&mutex_clients_array);
@@ -658,8 +688,8 @@ int main(int argc, char *argv[]){
     pthread_cond_destroy(&roomAvailable);
     pthread_mutex_destroy(&active_tasks_mutex);
     sem_destroy(&free_slots_sem);
-    
-    // close server
+
+    closing_server(server_socket);    
     print_server("CLOSING cleanly");
 
     return 0;
