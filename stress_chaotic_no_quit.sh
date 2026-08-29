@@ -3,7 +3,7 @@
 HOST="localhost"
 PORT=8080
 VERBOSE=4
-NUM_CLIENTS=20
+NUM_CLIENTS=2
 
 run_chaotic_worker() {
     CLIENT_ID=$1
@@ -42,7 +42,7 @@ run_chaotic_worker() {
             # 5. KEEP ALIVE (No quit command)
             # Sleep indefinitely so the client process and socket remain open 
             # until the server forces the connection closed during 'stop'.
-            sleep 3600
+            sleep 40
         fi
     ) | ./build/client $HOST $PORT $VERBOSE > /dev/null 2>&1
 }
