@@ -5,7 +5,7 @@
         \item \textbf{System Model:}
         \begin{itemize}
             \item \textbf{Server:} Manages a pool of clients and a pool of real-time worker threads.
-            \item \textbf{Clients:} Issue commands to modify the system state (Activate, Block, Stop, Quit).
+            \item \textbf{Clients:} Issue commands to modify the system state (Activate, Deactivate,     Block, Stop, Quit).
             \item \textbf{Tasks:} Periodic routines with predefined execution times and periods.
         \end{itemize}
         \item \textbf{The Challenge:} Managing high-frequency state changes across multiple threads (Connection Handlers, Task Workers, and the Main Server Loop) without incurring race conditions or deadlocks.
@@ -14,23 +14,15 @@
 
 % Slide 3: Architectural Overview
 \begin{frame}{System Architecture}
-    \begin{center}
-        \begin{tikzpicture}[node distance=2cm]
-            \node (client) [draw, rectangle, fill=blue!10] {Client (Command Generator)};
-            \node (server) [draw, rectangle, fill=orange!10, below of=client, node distance=3cm] {Server (Execution Supervisor)};
-            \node (tasks) [draw, cylinder, fill=green!10, below of=server, node distance=3cm] {Active Task Pool (Worker Threads)};
-            
-            \draw[->, thick] (client) -- node[right] {TCP/IP Command} (server);
-            \draw[->, thick] (server) -- node[right] {Status/Answers} (client);
-            \draw[->, thick] (server) -- node[right] {Spawn/Control} (tasks);
-        \end{tikzpicture}
-    \end{center}
+    \includegraphics[width=1\textwidth]{images/image.png}
+\end{frame}
+
+\begin{frame}
     \begin{itemize}
         \item \textbf{Decoupled Logic:} The server separates connection management from task execution.
         \item \textbf{Concurrency Model:} One thread per client (Connection Handler) and one thread per active task (Worker Thread).
     \end{itemize}
 \end{frame}
-
 % Slide 4: Data Structure Analysis
 \begin{frame}{Core Data Structures}
     To ensure thread safety, the system relies on two primary shared arrays:
@@ -38,7 +30,7 @@
         \item \texttt{Client clients[MAX\_THREADS]}:
         \begin{itemize}
             \item Tracks connected clients, their socket FDs, and assigned ports.
-            \item \textbf{Protected by:} \texttt{mutex\_clients\_array}.
+            \item \textbf{Protected by:} \texttt{mutex\_clients\_array}, \texttt{roomAvailable}.
         \end{itemize}
         \item \texttt{ActiveTask tasks\_active[MAX\_NUMBER\_ACTIVE\_TASKS]}:
         \begin{itemize}
@@ -73,13 +65,13 @@
         \item \textbf{\texttt{BLOCK} (Deactivate Task):}
         \begin{itemize}
             \item Finds the specific instance in \texttt{tasks\_active}.
-            \item Sets \texttt{active = 0} inside a \texttt{active\_tasks\_mutex} block.
+            \item Sets field of that task \texttt{active = 0} inside a \texttt{active\_tasks\_mutex} block.
             \item \textbf{Crucial:} The worker thread, seeing \texttt{active == 0}, terminates its loop.
             \item Calls \texttt{sem\_post} to signal a slot is now free.
         \end{itemize}
         \item \textbf{\texttt{QUIT} (Client Disconnect):}
         \begin{itemize}
-            \item Closes the socket and calls \texttt{rmvclient()}.
+            \item Closes the socket and calls \texttt{rmvclient()} which...
             \item Uses \texttt{mutex\_clients\_array} to update the client buffer.
         \end{itemize}
         \item \textbf{\texttt{STOP} (Global Shutdown):}
@@ -90,21 +82,9 @@
     \end{itemize}
 \end{frame}
 
-% Slide 7: The Danger of Race Conditions
-\begin{frame}{The Race Condition Problem}
-    \begin{alertblock}{Why Synchronization is Mandatory}
-        In a multi-threaded environment, the following "Check-then-Act" scenarios are hazardous:
-    \end{alertblock}
-    \begin{itemize}
-        \item \textbf{Scenario A (Task Slot Overlap):} Two clients send \texttt{ACTIVATE} simultaneously. Without \texttt{active\_tasks\_mutex}, both might find the same \texttt{free\_pos}, leading to one task overwriting the other.
-        \item \textbf{Scenario B (Server Saturation):} A client attempts to connect when the server is at \texttt{MAX\_THREADS}. Without proper signaling, the server might enter an inconsistent state or crash.
-        \item \textbf{Scenario C (Dirty Reads):} A worker thread checking its \texttt{active} status while the Connection Handler is deactivating it.
-    \end{itemize}
-\end{frame}
-
-% Slide 8: Synchronization Strategy: Mutexes
+% Slide 7: Synchronization Strategy: Mutexes
 \begin{frame}{Synchronization Strategy I: Mutexes}
-    The implementation utilizes several \texttt{pthread\_mutex\_t} objects to enforce **Mutual Exclusion**:
+    The implementation utilizes several \texttt{pthread\_mutex\_t} objects to enforce Mutual Exclusion:
     \begin{description}
         \item[\texttt{mutex\_clients\_array}] Protects the integrity of the client registry. Ensures only one thread modifies the client list at a time.
         \item[\texttt{active\_tasks\_mutex}] Protects the task registry. Critical for preventing corruption when tasks are added or removed.
@@ -113,7 +93,7 @@
     \end{description}
 \end{frame}
 
-% Slide 9: Synchronization Strategy: Semaphores
+% Slide 8: Synchronization Strategy: Semaphores
 \begin{frame}{Synchronization Strategy II: Semaphores}
     The system uses a \textbf{Counting Semaphore} (\texttt{free\_slots\_sem}) to manage the \texttt{tasks\_active} array:
     \begin{itemize}
@@ -130,16 +110,34 @@
 
 % Slide 10: Synchronization Strategy: Condition Variables
 \begin{frame}{Synchronization Strategy III: Condition Variables}
-    To handle the "Server Full" state for clients, we employ \texttt{pthread\_cond\_t (\texttt{roomAvailable})}:
-    \begin{enumerate}
-        \item \textbf{The Producer (Server Loop):} When a new connection arrives via \texttt{accept()}, the server attempts to add the client.
-        \item \textbf{The Consumer (Connection Handler):} If \texttt{findFreePosition()} returns -1 (Server Full), the thread enters:
+
+    To handle the ``Server Full'' state for clients, we employ
+    \texttt{pthread\_cond\_t} (\texttt{roomAvailable}):
+
+    \begin{itemize}
+
+        % \item \textbf{The Producer (Server Loop):}
+        % When a new connection arrives via \texttt{accept()}, the server
+        % attempts to add the client.
+
+        \item \textbf{The Consumer (Connection Handler):}
+        If \texttt{findFreePosition()} returns $-1$ (Server's array for client is full), the
+        thread enters:
+
         \begin{itemize}
-            \item \texttt{pthread_mutex\_lock(\&mutex\_clients\_array)}
-            \item \texttt{pthread_cond\_wait(\&roomAvailable, \&mutex\_clients\_array)}
+            \item \texttt{pthread\_mutex\_lock(\&mutex\_clients\_array)}
+            \item \texttt{pthread\_cond\_wait(\&roomAvailable,
+            \&mutex\_clients\_array)}
         \end{itemize}
-        \item \textbf{The Signal:} When \texttt{rmvclient()} is called (a client disconnects), \texttt{pthread\_cond\_signal(\&roomAvailable)} is invoked, waking up a waiting thread to occupy the new slot.
-    \end{enumerate}
+
+        \item \textbf{The Signal:}
+        When \texttt{rmvclient()} is called (a client disconnects),
+        \texttt{pthread\_cond\_signal(\&roomAvailable)} is invoked,
+        waking up a waiting thread so it can occupy the newly available
+        slot.
+
+    \end{itemize}
+
 \end{frame}
 
 % Slide 11: Summary of Synchronization Primitives
@@ -165,10 +163,20 @@
 \begin{frame}{Conclusion}
     \begin{itemize}
         \item \textbf{Robustness:} The system successfully bridges the gap between high-level TCP commands and low-level real-time thread management.
-        \item \textbf{Concurrency Safety:} By utilizing a tiered synchronization approach (Mutexes for state, Semaphores for resources, and Condition Variables for flow control), the system avoids the classic pitfalls of multi-threaded C programming.
+        \item \textbf{Concurrency Safety:} By utilizing such synchronization approach (Mutexes for state, Semaphores for resources, and Condition Variables for flow control), the system avoids the classic pitfalls of multi-threaded C programming.
         \item \textbf{Scalability:} The architecture allows for $N$ clients and $M$ tasks to operate simultaneously, governed strictly by the defined synchronization boundaries.
     \end{itemize}
     \vspace{0.5cm}
     \centering
     \textbf{\Large Questions?}
+\end{frame}
+
+\begin{frame}{Future Improvements}
+    \begin{itemize}
+        \item Compare Rate Monotonic with alternative fixed-priority policies.
+        \item Extend evaluation to dynamic-priority algorithms (e.g., EDF).
+        \item Evaluate system performance under high CPU utilization and overloaded conditions.
+        \item Thread pool for clients achitecture.
+        \item Possibly constant scan of all the clients and active tasks
+    \end{itemize}
 \end{frame}

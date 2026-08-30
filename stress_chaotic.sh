@@ -3,8 +3,8 @@
 HOST="localhost"
 PORT=8080
 VERBOSE=4 # Kept moderate for scannability
-HOLD_TIME=2
-WAIT_TIME=3
+HOLD_TIME=1
+WAIT_TIME=2
 NUM_WORKERS=9
 
 run_chaotic_worker() {

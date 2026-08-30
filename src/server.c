@@ -16,7 +16,7 @@
 #include <errno.h> 
 
 
-#define MAX_THREADS 10
+#define MAX_THREADS 3
 
 typedef struct {
     int socket_fd;
@@ -37,7 +37,7 @@ int close_server = 0;
 pthread_mutex_t mutex_clients_array = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutexstopserver = PTHREAD_MUTEX_INITIALIZER;  // necessary to overwrite correcly variable close_server
 
-// SEMAPHORES
+// conditions
 pthread_cond_t roomAvailable = PTHREAD_COND_INITIALIZER; // roomAvailable when there is space 
                                                         // in the buffer when buffer has clients
                                                         //  already in it
@@ -201,9 +201,14 @@ static void handleConnection(Client *c)
         /* Get the command string length
         If receive fails, the client most likely exited */
         if(receive(currSd, (char *)&netLen, sizeof(netLen))){
-            // an error occured in the recv() method
-            if(close_server == 0)
+            // acquire the mutex to be sure to read the right value
+            pthread_mutex_lock(&mutexstopserver);
+            int server_shutting_down = close_server;
+            pthread_mutex_unlock(&mutexstopserver);
+
+            if (!server_shutting_down) {
                 print_server_error("receive failed before command: client %d exited", c->port);
+            }
             print_server("[CLIENT %d] probably exited", c->port);
             break;
         } 
@@ -242,8 +247,8 @@ static void handleConnection(Client *c)
                 break;
 
             case CMD_STOP:
+                answer = strdup("cloing SERVER connection...");
                 pthread_mutex_lock(&mutexstopserver);
-                answer = strdup("closing SERVER connection...");
                 close_server = 1;
                 pthread_mutex_unlock(&mutexstopserver);
                 break;
@@ -320,9 +325,10 @@ static void handleConnection(Client *c)
                 break;
         }
         
+        free(command);
+
         if (!answer) {
             print_server_error("Memory allocation failed in strdup");
-            free(command);
             break;
         }
 
@@ -335,18 +341,15 @@ static void handleConnection(Client *c)
         
         /* Send answer character length to client */
         if (send(currSd, &netLen, sizeof(netLen), 0) == -1){
-            free(command);
             free(answer);
             break;
         }
         /* Send answer characters to client*/
         if (send(currSd, answer, len, 0) == -1){
-            free(command);
             free(answer);
             break;
         }
         
-        free(command);
         free(answer);        
 
     }
@@ -441,8 +444,6 @@ static void addclient(int current_socket, struct sockaddr_in *retSin)
         return;
     }
 
-    // Detach thread so resources auto-reclaim on completion
-    pthread_detach(client->thread);
 
     pthread_mutex_unlock(&mutex_clients_array);
     print_server("[CLIENT MUTEX] [CLIENT %d] RELEASED ", port);
