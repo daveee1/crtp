@@ -16,7 +16,7 @@
 #include <errno.h> 
 
 
-#define MAX_THREADS 3
+#define MAX_THREADS 10
 
 typedef struct {
     int socket_fd;
@@ -75,10 +75,13 @@ static int parse_task_number(const char *command) {
 }
 
 // TODO explain better
-/* Thread routine. It gets called by routine handleConnection() */
+/* Thread routine. Leave the task active till:
+        1. task has been deactivated or...
+        2. the server is closing
+   It gets called by routine handleConnection() */
 static void *handling_active_task(void *task)
 {
-    pthread_detach(pthread_self());
+    pthread_detach(pthread_self());  // once finished routine release resources
     ActiveTask *t = (ActiveTask*)task;
     
     // i want to activate t.task_id...
@@ -112,13 +115,11 @@ static void *handling_active_task(void *task)
         
         // task has been blocked
         if (is_active == 0) {
-            print_server("BLOCKED current task %d, client port %d!", current_task_id, current_task_client_port);
             break;
         }
         
-        // task has been stopped
+        // task has been stopped (server is closing)
         if (close_server == 1) {
-            print_server("STOP current task %d, client port %d!", current_task_id, current_task_client_port);
             break;
         }
 
@@ -363,7 +364,6 @@ static void handleConnection(Client *c)
 static void *connectionHandler(void *client)
 {
     // once finished this routine release resources
-    pthread_detach(pthread_self());
     Client *c = (Client*)client; // make it a 'Client' object
     
     handleConnection(c);
@@ -458,42 +458,85 @@ static void addclient(int current_socket, struct sockaddr_in *retSin)
 At the end of the program, before closing, the server sends to each
 active client a SHUTDOWN message.
 */
-static void closing_broadcast_to_clients(){
+static void closing_broadcast_to_clients()
+{
     print_server("SERVER_SHUTDOWN: waiting");
 
     const char *shutdown_msg = "SERVER_SHUTDOWN";
     int msg_len = strlen(shutdown_msg);
-    
+
+    pthread_t threads[MAX_THREADS];
+    int thread_count = 0;
+
     pthread_mutex_lock(&mutex_clients_array);
-    pthread_mutex_lock(&log_mutex);    
+    pthread_mutex_lock(&log_mutex);
 
     print_server_unlocked("SERVER_SHUTDOWN: activated");
 
-    for(int i = 0; i < MAX_THREADS; i++){
+    // --------------------------------------------------
+    // Tell every active client to shut down
+    // --------------------------------------------------
+
+    for (int i = 0; i < MAX_THREADS; i++) {
+
         Client *current_client = &clients[i];
 
-        // if the client is NOT active go to the next
-        if(current_client->active == 0)
+        if (current_client->active == 0)
             continue;
 
-        if(current_client->active == 1){
-            unsigned int netLen = htonl(msg_len);
-            if(send(current_client->socket_fd, &netLen, sizeof(netLen), 0) == -1){
-                print_server_error_unlocked(" SEND in closing_broadcast (number of chars)");
-            }
-            if(send(current_client->socket_fd, shutdown_msg, msg_len, 0) == -1){
-                print_server_error_unlocked(" SEND in closing_broadcast (ans)");
-            }
-            int client_port = current_client->port;
-            rmvclient_unlocked(current_client);
-            print_client_unlocked("SHUTDOWN [CLIENT %d]", client_port);
+        unsigned int netLen = htonl(msg_len);
+
+        if (send(current_client->socket_fd,
+                 &netLen,
+                 sizeof(netLen),
+                 0) == -1) {
+            print_server_error_unlocked(
+                " SEND in closing_broadcast (number of chars)"
+            );
         }
+
+        if (send(current_client->socket_fd,
+                 shutdown_msg,
+                 msg_len,
+                 0) == -1) {
+            print_server_error_unlocked(
+                " SEND in closing_broadcast (ans)"
+            );
+        }
+
+        // Save thread BEFORE removing client
+        threads[thread_count++] = current_client->thread;
+
+        int client_port = current_client->port;
+
+        print_client_unlocked(
+            "SHUTDOWN [CLIENT %d]",
+            client_port
+        );
+
+        rmvclient_unlocked(current_client);
     }
 
-    print_server_unlocked("SERVER_SHUTDOWN: end");
     pthread_mutex_unlock(&log_mutex);
     pthread_mutex_unlock(&mutex_clients_array);
 
+    // --------------------------------------------------
+    // Now wait for all client threads
+    // --------------------------------------------------
+
+    for (int i = 0; i < thread_count; i++) {
+
+        int ret = pthread_join(threads[i], NULL);
+
+        if (ret != 0) {
+            print_server_error(
+                "pthread_join failed for thread %d",
+                i
+            );
+        }
+    }
+
+    print_server("SERVER_SHUTDOWN: end");
 }
 
 static int closing_server(int sock){

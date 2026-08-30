@@ -33,7 +33,7 @@ run_client_session() {
         fi
 
         # echo "quit"
-        sleep 0.2
+        # sleep 0.2
     ) | ./build/client $HOST $PORT $VERBOSE
 }
 
