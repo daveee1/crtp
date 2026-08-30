@@ -200,7 +200,8 @@ int main(int argc, char **argv)
     my_client_port = get_my_client_port(client_socket);
     print_client("[%d] Enter command:", my_client_port);
 
-    int stdin_open = 1;
+    int stdin_open = 1;  // necessary otherwise when you reach end of the bash file
+                        // keeps spamming EOF therefore ERROR in fgets
 
     while(1)
     {
@@ -231,7 +232,7 @@ int main(int argc, char **argv)
 
         //2) input by user detected or bash file detected
         if(stdin_open == 1 && (STDIN_FILENO, &read_fds) > 0){
-            char input[50];
+            char input[10];
 
             if (fgets(input, sizeof(input), stdin) == NULL){
                 print_client_warning("[%d] STDIN reached EOF (script finished). Waiting for server answers...", my_client_port);
