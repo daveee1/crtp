@@ -3,7 +3,7 @@
 HOST="localhost"
 PORT=8080
 VERBOSE=4
-NUM_CLIENTS=2
+NUM_CLIENTS=8
 
 run_chaotic_worker() {
     CLIENT_ID=$1

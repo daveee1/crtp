@@ -1,5 +1,9 @@
 TODO 
 
 
-    [SERVER] receive failed before command: client exited
-    [SERVER] currSd value was: 4
+
+    TODOs
+
+
+    PRESENTATI
+        for each command tell me what happens

@@ -7,7 +7,7 @@ sem_t free_slots_sem;               // is there space in our 'tasks_active' arra
 static int next_instance_id = 0;    // to have a 'time history' of the tasks
 
 static void run_task1_unlocked(void) {
-    if(verbose > 3) printf("task 1 activated\n");
+    if(verbose > 8) printf("task 1 activated\n");
     volatile double val = 1.0001;   // volatile so not optimizable by -O3
     for (volatile long i = 0; i < 240000010L; i++) {
         val = val * 1.0000001 + 0.0000001;
@@ -15,7 +15,7 @@ static void run_task1_unlocked(void) {
 }
 
 static void run_task2_unlocked(void) {
-    if(verbose > 3) printf("task 2 activated\n");
+    if(verbose > 8) printf("task 2 activated\n");
     volatile double val = 1.0001;
     for (volatile long i = 0; i < 180000001L; i++) {
         val = val * 1.0000001 + 0.0000001;
@@ -23,7 +23,7 @@ static void run_task2_unlocked(void) {
 }
 
 static void run_task3_unlocked(void) {
-    if(verbose > 3) printf("task 3 activated\n");
+    if(verbose > 8) printf("task 3 activated\n");
     volatile double val = 1.0001;
     for (volatile long i = 0; i < 120000000L; i++) {
         val = val * 1.0000001 + 0.0000001;
@@ -31,7 +31,7 @@ static void run_task3_unlocked(void) {
 }
 
 static void run_task4_unlocked(void) {
-    if(verbose > 3) printf("task 4 activated\n");
+    if(verbose > 8) printf("task 4 activated\n");
     volatile double val = 1.0001;
     for (volatile long i = 0; i < 60000000L; i++) {
         val = val * 1.0000001 + 0.0000001;
@@ -47,6 +47,48 @@ const Task TASK_CATALOG[] = {
     {3,   80,  4000,  3000, run_task3_unlocked},
     {4,   20,  1000,  800, run_task4_unlocked}
 };
+
+static void print_active_tasks(int client_port) {
+    int count = 0;
+
+    // 1. Lock BOTH data state and console log to prevent data races and text interleaving
+    pthread_mutex_lock(&log_mutex);
+
+    printf("[CLIENT %d] printing tasks WAITING\n", client_port);
+    printf("[CLIENT %d] printing tasks ACQUIRED\n", client_port);
+
+    printf("\n+---+------------------+---------+------------------+\n");
+    printf("| Slot| Client Port      | TASK_ID | Worker Thread ID |\n");
+    printf("+---+------------------+---------+------------------+\n");
+
+    // 2. Iterate directly over the real active tasks array
+    for (int i = 0; i < MAX_NUMBER_ACTIVE_TASKS; i++) {
+        if (tasks_active[i].active == 1) {
+            count++;
+            printf("|  %-2d | Port: %-10d | Task: %-1d | ThreadID: %-5d|\n",
+                   i,
+                   tasks_active[i].client_port, 
+                   tasks_active[i].task_id, 
+                   tasks_active[i].instance_id);
+        }
+    }
+
+    if (count == 0)
+        printf("|       --- No Active Tasks Running ---        |\n");
+
+    printf("+---+------------------+---------+------------------+\n");
+    printf(" Total Active Tasks: %d / %d\n\n", count, MAX_NUMBER_ACTIVE_TASKS);
+
+    printf("[CLIENT %d] printing tasks RELEASED\n\n", client_port);
+
+    fflush(stdout);
+
+    // 3. Unlock in reverse order
+    pthread_mutex_unlock(&log_mutex);
+}
+
+
+
 
 static void init_active_task(ActiveTask *t, int position){
     t->active = 0;
@@ -107,6 +149,11 @@ int add_active_task_and_return_position(ActiveTask *new_task){
     task->client_port = new_task->client_port;
     task->instance_id = next_instance_id++;  
     
+
+    // print table inside the mutex!
+    // has been the current task successfully added?
+    print_active_tasks(task->client_port);
+
     // release mutex
     pthread_mutex_unlock(&active_tasks_mutex);
     
@@ -157,7 +204,7 @@ int find_and_remove_active_task(ActiveTask *at){
 
         
     // scan for all tasks_active, chose the position where the lowest
-    //  instance of this client is active
+    //  'instance' of this client is active
     int pos = find_instance_to_deactivate(at);
     if (pos == -1) {
         // no istance to deactivate
@@ -168,6 +215,7 @@ int find_and_remove_active_task(ActiveTask *at){
 
     // deactivate task
     ActiveTask *task = &tasks_active[pos];
+    int client_port = task->client_port;
     task->active = 0;
     task->instance_id = -1;
     task->client_owner_fd = -1;
@@ -175,6 +223,10 @@ int find_and_remove_active_task(ActiveTask *at){
     task->thread_id = -1;  
     task->client_port= -1;  
     task->position = -1;
+
+    // print active tasks! 
+    // has been the current task successfully eliminated?
+    print_active_tasks(client_port);
 
     pthread_mutex_unlock(&active_tasks_mutex);
 

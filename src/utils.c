@@ -81,6 +81,49 @@ void print_server(const char *format, ...) {
 }
 
 
+/* output for SERVER SHUTDOWN */
+void print_server_unlocked(const char *format, ...) {
+    // 1. Fast Check: Skip if verbosity level isn't met
+    if (verbose < 2 || format == NULL) return;
+
+    // 2. Print prefix with colors
+    printf("%s[SERVER] ", COLOR_ORANGE);
+
+    // 3. Process formatted parameters directly
+    va_list args;
+    va_start(args, format);
+    vprintf(format, args);
+    va_end(args);
+
+    // 4. Reset colors and newline
+    printf("%s\n", COLOR_RESET);
+
+    fflush(stdout);
+
+}
+
+/* error for SERVER SHUTDOWN */
+void print_server_error_unlocked(const char *format, ...) {
+    // 1. Fast Check: Skip if verbosity level isn't met
+    if (verbose < 0 || format == NULL) return;
+
+    // 2. Print prefix with colors
+    printf("%s[SERVER ERROR] ", COLOR_RED);
+
+    // 3. Process formatted parameters directly
+    va_list args;
+    va_start(args, format);
+    vprintf(format, args);
+    va_end(args);
+
+    // 4. Reset colors and newline
+    printf("%s\n", COLOR_RESET);
+
+    fflush(stdout);
+}
+
+
+
 
 /* Blue error output for Client */
 void print_client(const char *format, ...) {
@@ -104,6 +147,27 @@ void print_client(const char *format, ...) {
     fflush(stdout);
 
     pthread_mutex_unlock(&log_mutex);
+
+}
+
+// to remove a client
+void print_client_unlocked(const char *format, ...) {
+    // 1. Fast Check: Skip if verbosity level isn't met
+    if (verbose < 2 || format == NULL) return;
+
+    // 2. Print prefix with colors
+    printf("%s[CLIENT] ", COLOR_LIGHT_BLUE);
+
+    // 3. Process formatted parameters directly
+    va_list args;
+    va_start(args, format);
+    vprintf(format, args);
+    va_end(args);
+
+    // 4. Reset colors and newline
+    printf("%s\n", COLOR_RESET);
+
+    fflush(stdout);
 
 }
 

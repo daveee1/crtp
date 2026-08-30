@@ -78,6 +78,7 @@ static int parse_task_number(const char *command) {
 /* Thread routine. It gets called by routine handleConnection() */
 static void *handling_active_task(void *task)
 {
+    pthread_detach(pthread_self());
     ActiveTask *t = (ActiveTask*)task;
     
     // i want to activate t.task_id...
@@ -109,11 +110,13 @@ static void *handling_active_task(void *task)
         int is_active = tasks_active[pos].active;
         pthread_mutex_unlock(&active_tasks_mutex);
         
+        // task has been blocked
         if (is_active == 0) {
-            print_server("DEACTIVATED current task %d, client port %d!", current_task_id, current_task_client_port);
+            print_server("BLOCKED current task %d, client port %d!", current_task_id, current_task_client_port);
             break;
         }
         
+        // task has been stopped
         if (close_server == 1) {
             print_server("STOP current task %d, client port %d!", current_task_id, current_task_client_port);
             break;
@@ -156,61 +159,21 @@ static void rmvclient_unlocked(Client *client) {
     client->position = -1;
     pthread_cond_signal(&roomAvailable);
 
-    /* Debugging */
-    print_client("CLOSED CLIENT: port->%d, cl->%s",
-        client->port,
-        client->ip
-    );
 }
 
 
 /* 2. PUBLIC WRAPPER: Locks mutex, calls unlocked helper, unlocks mutex */
-static void rmvclient(Client *client) {
+static int rmvclient(Client *client) {
+    if(client->active == 0)
+        return -1;    // this client has been deactivated by a stop command 
+                      // by another client
     pthread_mutex_lock(&mutex_clients_array);
+    
     rmvclient_unlocked(client);
+    
     pthread_mutex_unlock(&mutex_clients_array);
-}
 
-static void print_active_tasks(Client *c) {
-    int count = 0;
-
-    // 1. Lock BOTH data state and console log to prevent data races and text interleaving
-    pthread_mutex_lock(&active_tasks_mutex);
-    pthread_mutex_lock(&log_mutex);
-
-    printf("[CLIENT %d] printing tasks WAITING\n", c->port);
-    printf("[CLIENT %d] printing tasks ACQUIRED\n", c->port);
-
-    printf("\n+---+------------------+---------+------------------+\n");
-    printf("| Slot| Client Port      | TASK_ID | Worker Thread ID |\n");
-    printf("+---+------------------+---------+------------------+\n");
-
-    // 2. Iterate directly over the real active tasks array
-    for (int i = 0; i < MAX_NUMBER_ACTIVE_TASKS; i++) {
-        if (tasks_active[i].active == 1) {
-            count++;
-            printf("|  %-2d | Port: %-10d | Task: %-1d | ThreadID: %-5d|\n",
-                   i,
-                   tasks_active[i].client_port, 
-                   tasks_active[i].task_id, 
-                   tasks_active[i].instance_id);
-        }
-    }
-
-    if (count == 0) {
-        printf("|       --- No Active Tasks Running ---        |\n");
-    }
-
-    printf("+---+------------------+---------+------------------+\n");
-    printf(" Total Active Tasks: %d / %d\n\n", count, MAX_NUMBER_ACTIVE_TASKS);
-
-    printf("[CLIENT %d] printing tasks RELEASED\n\n", c->port);
-
-    fflush(stdout);
-
-    // 3. Unlock in reverse order
-    pthread_mutex_unlock(&log_mutex);
-    pthread_mutex_unlock(&active_tasks_mutex);
+    return 1;
 }
 
 
@@ -233,13 +196,15 @@ static void handleConnection(Client *c)
     int currSd = c->socket_fd;
     ActiveTask candidate_task;
     
-    while(1)
+    while(c->active && quit == 0)
     {
         /* Get the command string length
         If receive fails, the client most likely exited */
         if(receive(currSd, (char *)&netLen, sizeof(netLen))){
             // an error occured in the recv() method
-            print_server_warning("receive failed before command: client %d exited, currSd value was: %d", c->port, currSd);
+            if(close_server == 0)
+                print_server_error("receive failed before command: client %d exited", c->port);
+            print_server("[CLIENT %d] probably exited", c->port);
             break;
         } 
         /* Convert from network byte order */
@@ -324,13 +289,9 @@ static void handleConnection(Client *c)
                         break;
                     }
 
-                    // Detach thread so resources auto-reclaim on completion
-                    pthread_detach(tasks_active[free_pos].thread_id);
-
                     print_server("[CLIENT %d] TASK %d ACTIVATED in slot %d", c->port, task_number, free_pos);                    
-                    answer = strdup("TASK_ACTIVATED");
+                    answer = strdup("task ACTIVATED");
 
-                    print_active_tasks(c);
                 }
                 break;
             
@@ -350,13 +311,11 @@ static void handleConnection(Client *c)
                 
                 if (find_and_remove_active_task(&candidate_task) == -1) {
                     answer = strdup("task was NOT active");
-                    print_server_warning("[CLIENT %d] NO INSTANCE TO DEACTIVATE for task %d", c->port, task_number);
+                    // print_server_warning("[CLIENT %d] NO INSTANCE TO DEACTIVATE for task %d", c->port, task_number);
                     break;
                 }
 
                 answer = strdup("task DEACTIVATED");
-
-                print_active_tasks(c);
 
                 break;
         }
@@ -367,6 +326,9 @@ static void handleConnection(Client *c)
             break;
         }
 
+        /* another client stopped the server: OUT */
+            
+        
         /* we must send 'ans' to Client */
         len = strlen(answer);
         netLen = htonl(len);
@@ -383,16 +345,10 @@ static void handleConnection(Client *c)
             free(answer);
             break;
         }
+        
         free(command);
-        free(answer);
-        
-        
-        /* 5. Trigger Shutdown Broadcast if 'stop' was issued */
-        if (close_server || quit) {
-            /*'close_server': Notify all other clients, close their sockets, and wake select() */
-            /*'quit': close client*/
-            break;
-        }
+        free(answer);        
+
     }
     
 }
@@ -403,11 +359,20 @@ static void handleConnection(Client *c)
 */
 static void *connectionHandler(void *client)
 {
+    // once finished this routine release resources
+    pthread_detach(pthread_self());
     Client *c = (Client*)client; // make it a 'Client' object
+    
     handleConnection(c);
 
-    rmvclient(c);
-
+    int port = c->port;
+    if(rmvclient(c) == -1)
+        return NULL;
+    
+    /* Debugging */
+    print_client("CLOSED CLIENT: port->%d",
+        port
+    );
     return NULL;
 }
 
@@ -483,8 +448,7 @@ static void addclient(int current_socket, struct sockaddr_in *retSin)
     print_server("[CLIENT MUTEX] [CLIENT %d] RELEASED ", port);
 
     /* Debugging */
-    print_client("NEW CLIENT: ip->%s, port->%d",
-        client->ip,
+    print_client("NEW CLIENT: port->%d",
         client->port);
 }
 
@@ -495,13 +459,14 @@ active client a SHUTDOWN message.
 */
 static void closing_broadcast_to_clients(){
     print_server("SERVER_SHUTDOWN: waiting");
-    
-    pthread_mutex_lock(&mutex_clients_array);
-    
+
     const char *shutdown_msg = "SERVER_SHUTDOWN";
     int msg_len = strlen(shutdown_msg);
+    
+    pthread_mutex_lock(&mutex_clients_array);
+    pthread_mutex_lock(&log_mutex);    
 
-    print_server("SERVER_SHUTDOWN: activated");
+    print_server_unlocked("SERVER_SHUTDOWN: activated");
 
     for(int i = 0; i < MAX_THREADS; i++){
         Client *current_client = &clients[i];
@@ -513,17 +478,21 @@ static void closing_broadcast_to_clients(){
         if(current_client->active == 1){
             unsigned int netLen = htonl(msg_len);
             if(send(current_client->socket_fd, &netLen, sizeof(netLen), 0) == -1){
-                print_server_error(" SEND in closing_broadcast (number of chars)");
+                print_server_error_unlocked(" SEND in closing_broadcast (number of chars)");
             }
             if(send(current_client->socket_fd, shutdown_msg, msg_len, 0) == -1){
-                print_server_error(" SEND in closing_broadcast (ans)");
+                print_server_error_unlocked(" SEND in closing_broadcast (ans)");
             }
+            int client_port = current_client->port;
             rmvclient_unlocked(current_client);
+            print_client_unlocked("SHUTDOWN [CLIENT %d]", client_port);
         }
     }
+
+    print_server_unlocked("SERVER_SHUTDOWN: end");
+    pthread_mutex_unlock(&log_mutex);
     pthread_mutex_unlock(&mutex_clients_array);
 
-    print_server("SERVER_SHUTDOWN: end");
 }
 
 static int closing_server(int sock){

@@ -23,7 +23,7 @@ static int handle_server_answer(int socket, int port_client){
     
     /* 1. Receive message length */
     if (receive(socket, (char *)&netLen, sizeof(netLen)) < 0) {
-        print_client("Server closed connection");
+        // print_client("[CLIENT %d] Server closed connection", port_client);
         return -1; /* Connection lost */
     }
 
@@ -200,6 +200,8 @@ int main(int argc, char **argv)
     my_client_port = get_my_client_port(client_socket);
     print_client("[%d] Enter command:", my_client_port);
 
+    int stdin_open = 1;
+
     while(1)
     {
         fd_set read_fds;
@@ -228,13 +230,13 @@ int main(int argc, char **argv)
         }
 
         //2) input by user detected or bash file detected
-        if(FD_ISSET(STDIN_FILENO, &read_fds) > 0){
+        if(stdin_open == 1 && (STDIN_FILENO, &read_fds) > 0){
             char input[50];
 
             if (fgets(input, sizeof(input), stdin) == NULL){
-                print_client("[%d] STDIN reached EOF (script finished). Waiting for server answers...", my_client_port);
-                // continue; // reached EOF, now we wait select option 1 (server answers)
-                exit(1);
+                print_client_warning("[%d] STDIN reached EOF (script finished). Waiting for server answers...", my_client_port);
+                stdin_open = 0; // stop looking in the stdin
+                continue; // reached EOF, now we wait for select option 1 (server answers)
             }
             int len = (int)strlen(input);
             input[len - 1] = '\0'; // if input length >= 50 i dont care
@@ -243,7 +245,7 @@ int main(int argc, char **argv)
             cmd = parse_user_input(input);
             /* Filter out invalid commands early */
             if (cmd == CLIENT_CMD_INVALID) {
-                print_client_warning("[%d] Invalid choice! Enter a/b 1-4 for tasks or 'help', 'quit', 'stop'.", my_client_port);
+                print_client("[%d] Invalid choice! Enter a/b 1-4 for tasks or 'help', 'quit', 'stop'.", my_client_port);
                 continue;
             }
 
