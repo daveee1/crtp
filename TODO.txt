@@ -7,3 +7,24 @@ TODO
 
     PRESENTATI
         for each command tell me what happens
+
+
+
+
+notes
+    Step-by-Step Execution Chain
+Client thread is sleeping: Inside connectionHandler, the client thread is executing recv(). It is paused by the OS kernel, waiting for incoming network bytes.
+
+closing_broadcast_to_clients() runs: Your main thread calls shutdown() / close() on the client's socket descriptor.
+
+OS unblocks recv(): The operating system notices the socket was closed and wakes up the sleeping thread. recv() immediately returns -1 (an error) or 0 (EOF).
+
+Thread resumes execution: The client thread wakes up right after recv() and continues executing C code line-by-line:
+
+It checks the return value of recv().
+
+It executes your error handling code: print_server("receive failed before command...").
+
+It hits return NULL;.
+
+Thread Exits: Only when connectionHandler hits return NULL; does the thread actually terminate.
