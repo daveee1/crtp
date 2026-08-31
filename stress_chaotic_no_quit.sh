@@ -4,6 +4,8 @@ HOST="localhost"
 PORT=8080
 VERBOSE=4
 NUM_CLIENTS=8
+HOLD_TIME=0.2
+WAIT_TIME=0.3
 
 run_chaotic_worker() {
     CLIENT_ID=$1
@@ -24,14 +26,14 @@ run_chaotic_worker() {
         TASK_B=$(( (RANDOM % 4) + 1 ))
         
         echo "a $TASK_A"
-        sleep $(awk "BEGIN {print rand()*0.3 + 0.1}")
+        sleep $HOLD_TIME
         echo "a $TASK_B"
         
         sleep $(awk "BEGIN {print rand()*0.5 + 1.0}")
         
         # 3. Chaotic Deactivation Phase
         echo "b $TASK_A"
-        sleep $(awk "BEGIN {print rand()*0.3 + 0.1}")
+        sleep $HOLD_TIME
         echo "b $TASK_B"
         
         # 4. Global STOP trigger executed ONLY by the last client

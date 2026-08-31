@@ -121,7 +121,7 @@ static int rta(ActiveTask *new_active_task){
             
             if(response_time > D_i)
                 return -1;  // unschedulable
-            print_analysis("[RTA]: respprev: %Lf, resptime: %Lf\n", response_prev, response_time);
+            print_analysis("[RTA client %d task %d]: respprev: %Lf, resptime: %Lf\n", new_active_task->client_port, new_active_task->task_id , response_prev, response_time);
         }
     }
 

@@ -42,10 +42,10 @@ static void run_task4_unlocked(void) {
 
 // taskid, cpuusage, period, deadline, routine
 const Task TASK_CATALOG[] = {
-    {1,  300, 100000, 90000, run_task1_unlocked},
-    {2,  150,  50000,  3500, run_task2_unlocked},
-    {3,   80,  4000,  3000, run_task3_unlocked},
-    {4,   20,  1000,  800, run_task4_unlocked}
+    {1,  300, 1000, 900, run_task1_unlocked},
+    {2,  150,  500,  350, run_task2_unlocked},
+    {3,   280,  400,  300, run_task3_unlocked},
+    {4,   20,  100,  80, run_task4_unlocked}
 };
 
 // Pass a local copy array to avoid holding active_tasks_mutex during stdout I/O

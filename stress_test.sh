@@ -3,8 +3,8 @@
 HOST="localhost"
 PORT=8080
 VERBOSE=3
-HOLD_TIME=2
-WAIT_TIME=3
+HOLD_TIME=0.2
+WAIT_TIME=0.3
 
 run_client_session() {
     CLIENT_ID=$1
@@ -54,4 +54,4 @@ run_client_session 10 4 3 1 &
 # Wait for all background client processes to complete
 wait
 
-echo "All 10 client sessions finished."
+echo "All 6 client sessions finished."
