@@ -48,10 +48,10 @@ const Task TASK_CATALOG[] = {
     {4,   20,  1000,  800, run_task4_unlocked}
 };
 
-static void print_active_tasks(int client_port) {
+// Pass a local copy array to avoid holding active_tasks_mutex during stdout I/O
+static void print_active_tasks(int client_port, const ActiveTask snapshot[], int max_tasks) {
     int count = 0;
 
-    // 1. Lock BOTH data state and console log to prevent data races and text interleaving
     pthread_mutex_lock(&log_mutex);
 
     printf("[CLIENT %d] printing tasks WAITING\n", client_port);
@@ -61,15 +61,14 @@ static void print_active_tasks(int client_port) {
     printf("| Slot| Client Port      | TASK_ID | Worker Thread ID |\n");
     printf("+---+------------------+---------+------------------+\n");
 
-    // 2. Iterate directly over the real active tasks array
-    for (int i = 0; i < MAX_NUMBER_ACTIVE_TASKS; i++) {
-        if (tasks_active[i].active == 1) {
+    for (int i = 0; i < max_tasks; i++) {
+        if (snapshot[i].active == 1) {
             count++;
             printf("|  %-2d | Port: %-10d | Task: %-1d | ThreadID: %-5d|\n",
                    i,
-                   tasks_active[i].client_port, 
-                   tasks_active[i].task_id, 
-                   tasks_active[i].instance_id);
+                   snapshot[i].client_port, 
+                   snapshot[i].task_id, 
+                   snapshot[i].instance_id);
         }
     }
 
@@ -77,13 +76,11 @@ static void print_active_tasks(int client_port) {
         printf("|       --- No Active Tasks Running ---        |\n");
 
     printf("+---+------------------+---------+------------------+\n");
-    printf(" Total Active Tasks: %d / %d\n\n", count, MAX_NUMBER_ACTIVE_TASKS);
+    printf(" Total Active Tasks: %d / %d\n\n", count, max_tasks);
 
     printf("[CLIENT %d] printing tasks RELEASED\n\n", client_port);
-
     fflush(stdout);
 
-    // 3. Unlock in reverse order
     pthread_mutex_unlock(&log_mutex);
 }
 
@@ -119,21 +116,18 @@ int find_free_pos_in_tasksactive(){
 add new task into 'active_tasks' array.
 [Return] position where the task is stored.
 */
-int add_active_task_and_return_position(ActiveTask *new_task){
-    // Try to take a slot without blocking thread execution
-    if (sem_trywait(&free_slots_sem) != 0) { // if different from 0 it FAILED
-        // Slot array is FULL
+int add_active_task_and_return_position(ActiveTask *new_task) {
+    if (sem_trywait(&free_slots_sem) != 0) {
         return -1;
     }
 
-    print_server("[tasks_active MUTEX] [CLIENT %d] ADD task %d WAITING",  new_task->client_port, new_task->task_id );
+    print_server("[tasks_active MUTEX] [CLIENT %d] ADD task %d WAITING", new_task->client_port, new_task->task_id);
     
-    // acquire mutex
     pthread_mutex_lock(&active_tasks_mutex);
     
-    print_server("[tasks_active MUTEX] [CLIENT %d] ADD task %d ACQUIRED",  new_task->client_port,  new_task->task_id);
+    print_server("[tasks_active MUTEX] [CLIENT %d] ADD task %d ACQUIRED", new_task->client_port, new_task->task_id);
     
-    int free_pos = find_free_pos_in_tasksactive(); // there must be since free_slots_sem >= 1
+    int free_pos = find_free_pos_in_tasksactive();
     if (free_pos == -1) {
         pthread_mutex_unlock(&active_tasks_mutex);
         print_server("[tasks_active MUTEX] [CLIENT %d] NO POS in ADD task %d RELEASED", new_task->client_port, new_task->task_id);
@@ -148,16 +142,20 @@ int add_active_task_and_return_position(ActiveTask *new_task){
     task->client_owner_fd = new_task->client_owner_fd;
     task->client_port = new_task->client_port;
     task->instance_id = next_instance_id++;  
-    
 
-    // print table inside the mutex!
-    // has been the current task successfully added?
-    print_active_tasks(task->client_port);
+    // 1. Create a quick snapshot of active tasks while holding the lock
+    ActiveTask snapshot[MAX_NUMBER_ACTIVE_TASKS];
+    memcpy(snapshot, tasks_active, sizeof(tasks_active));
 
-    // release mutex
+    int client_port = task->client_port;
+
+    // 2. Release the state lock IMMEDIATELY
+    print_server("[tasks_active MUTEX] [CLIENT %d] ADD task %d RELEASED", new_task->client_port, new_task->task_id);
     pthread_mutex_unlock(&active_tasks_mutex);
     
-    print_server("[tasks_active MUTEX] [CLIENT %d] ADD task %d RELEASED",  new_task->client_port,  new_task->task_id);
+
+    // 3. Perform slow console I/O completely outside the state lock
+    print_active_tasks(client_port, snapshot, MAX_NUMBER_ACTIVE_TASKS);
 
     return free_pos;
 }
@@ -208,8 +206,8 @@ int find_and_remove_active_task(ActiveTask *at){
     int pos = find_instance_to_deactivate(at);
     if (pos == -1) {
         // no istance to deactivate
-        pthread_mutex_unlock(&active_tasks_mutex);
         print_server("[tasks_active MUTEX] [CLIENT %d] RMV RELEASED: NO instance to deactivate task %d", at->client_port, at->task_id); 
+        pthread_mutex_unlock(&active_tasks_mutex);
         return -1;
     }
 
@@ -224,16 +222,20 @@ int find_and_remove_active_task(ActiveTask *at){
     task->client_port= -1;  
     task->position = -1;
 
-    // print active tasks! 
-    // has been the current task successfully eliminated?
-    print_active_tasks(client_port);
+    
+    // 1. Create a quick snapshot of active tasks while holding the lock
+    ActiveTask snapshot[MAX_NUMBER_ACTIVE_TASKS];
+    memcpy(snapshot, tasks_active, sizeof(tasks_active));
 
+
+    
+    // 2. Release the state lock IMMEDIATELY
+    print_server("[tasks_active MUTEX] [CLIENT %d] RMV task %d RELEASED", at->client_port, at->task_id); 
     pthread_mutex_unlock(&active_tasks_mutex);
-
-    print_server("[tasks_active MUTEX] [CLIENT %d] RMV task %d RELEASED, DEACTIVATED in slot %d", 
-        at->client_port,
-        at->task_id,
-        pos);
+    
+    // 3. Perform slow console I/O completely outside the state lock
+    print_active_tasks(client_port, snapshot, MAX_NUMBER_ACTIVE_TASKS);
+   
 
     // free a slot
     sem_post(&free_slots_sem);

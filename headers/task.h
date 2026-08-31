@@ -6,6 +6,7 @@
 #include <pthread.h>
 #include "headers/utils.h"
 #include <limits.h> // needed to use INT_MAX as lowest_instance in 'find_instance_to_deactivate()'
+#include <string.h>
 
 
 #define MAX_NUMBER_ACTIVE_TASKS 4
