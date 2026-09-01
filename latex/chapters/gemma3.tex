@@ -6,7 +6,7 @@
         \begin{itemize}
             \item \textbf{Server:} Manages a pool of clients and a pool of real-time worker threads.
             \item \textbf{Clients:} Issue commands to modify the system state (Activate, Deactivate,     Block, Stop, Quit).
-            \item \textbf{Tasks:} Periodic routines with predefined execution times and periods.
+            \item \textbf{Tasks:} Periodic routines with predefined execution times, deadlines and periods.
         \end{itemize}
         \item \textbf{The Challenge:} Managing high-frequency state changes across multiple threads (Connection Handlers, Task Workers, and the Main Server Loop) without incurring race conditions or deadlocks.
     \end{itemize}
@@ -110,13 +110,13 @@
     When a client sends an \texttt{ACTIVATE <ID>} command, the Server follows this protocol:
     \begin{enumerate}
         \item \textbf{Parsing:} Extract task ID from the command string.
-        \item \textbf{Schedulability Check:} Run \texttt{is\_schedulable()}. This is a read-only operation on the task array.
         \item \textbf{Resource Acquisition:} 
         \begin{itemize}
             \item Attempt to decrement the \texttt{free\_slots\_sem}.
             \item Lock \texttt{active\_tasks\_mutex}.
             \item Locate an empty slot in \texttt{tasks\_active}.
         \end{itemize}
+        \item \textbf{Schedulability Check:} Run \texttt{is\_schedulable()}. This is a read-only operation on the task array.
         \item \textbf{Thread Spawning:} Call \texttt{pthread\_create} for \texttt{handling\_active\_task}.
         \item \textbf{Unlock:} Release \texttt{active\_tasks\_mutex}.
     \end{enumerate}
