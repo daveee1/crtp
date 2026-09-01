@@ -277,33 +277,31 @@ static void handleConnection(Client *c)
                 candidate_task.client_owner_fd = currSd;
                 candidate_task.client_port = c->port;
 
-                if(is_schedulable(&candidate_task) == -1){
-                    // task NOT SCHEDULABLE
-                    print_server_warning("[CLIENT %d] TASK %d NOT SCHEDULABLE", c->port, task_number);
-
-                    answer = strdup("TASK_REJECTED: System unschedulable (Deadline miss risk)");
+                
+                // task SCHEDULABLE: add it to 'active_tasks' array!
+                int free_pos = add_active_task_and_return_position(&candidate_task);
+                if(free_pos == -1){
+                    print_server("[CLIENT %d] FULL CAPACITY for tasks_active array, retry or deactivate!", c->port);
+                    answer = strdup("FULL CAPACITY tasks_active[]");
+                    break;
                 }
-                else{
-                    // task SCHEDULABLE: add it to 'active_tasks' array!
-                    int free_pos = add_active_task_and_return_position(&candidate_task);
-                    if(free_pos == -1){
-                        print_server_warning("[CLIENT %d] FULL CAPACITY for tasks_active array, retry or deactivate!", c->port);
-                        answer = strdup("FULL CAPACITY tasks_active[]");
-                        break;
-                    }
-                    
-                    // generate a thread for the task
-                    if(pthread_create(&tasks_active[free_pos].thread_id, NULL, handling_active_task, &tasks_active[free_pos]) != 0){
-                        print_server_error("Failed to spawn worker thread for task");
-                        answer = strdup("ERROR: Thread creation failed");
-                        tasks_active[free_pos].active = 0;
-                        break;
-                    }
-
-                    print_server("[CLIENT %d] TASK %d ACTIVATED in slot %d", c->port, task_number, free_pos);                    
-                    answer = strdup("task ACTIVATED");
-
+                else if(free_pos == -2){
+                    print_server("[CLIENT %d] UNSCHEDULABLE task %d!", c->port, candidate_task.task_id);
+                    answer = strdup("FULL CAPACITY tasks_active[]");
+                    break;
                 }
+
+                // generate a thread for the task
+                if(pthread_create(&tasks_active[free_pos].thread_id, NULL, handling_active_task, &tasks_active[free_pos]) != 0){
+                    print_server_error("Failed to spawn worker thread for task");
+                    answer = strdup("ERROR: Thread creation failed");
+                    tasks_active[free_pos].active = 0;
+                    break;
+                }
+
+                print_server("[CLIENT %d] TASK %d ACTIVATED in slot %d", c->port, task_number, free_pos);                    
+                answer = strdup("task ACTIVATED");
+
                 break;
             
             case CMD_DEACTIVATE:

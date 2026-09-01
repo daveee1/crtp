@@ -47,7 +47,6 @@ void print_client_unlocked(const char *format, ...);
 
 
 void print_analysis(const char *format, ...);
-void print_printingTASK(const char *format, ...);
 
 int receive(int sd, char *retBuf, int size);
 

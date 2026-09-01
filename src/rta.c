@@ -1,4 +1,5 @@
 #include "headers/rta.h"
+#include "headers/task.h"
 
 /* Helper structure for temporary priority sorting in RTA*/
 typedef struct {
@@ -74,7 +75,6 @@ static int rta(ActiveTask *new_active_task){
     int total_tasks = 0; // which tasks do i have to consider: managed by total_tasks
     
     // 1. take active tasks 
-    pthread_mutex_lock(&active_tasks_mutex);
     for(int i = 0; i < MAX_NUMBER_ACTIVE_TASKS; i++){
         if(tasks_active[i].active == 1){
             const Task *catalog_entry = &TASK_CATALOG[tasks_active[i].task_id - 1];
@@ -85,7 +85,6 @@ static int rta(ActiveTask *new_active_task){
             total_tasks++;
         }
     }
-    pthread_mutex_unlock(&active_tasks_mutex);
     
     // 2. add newtask in the fake array
     const Task *new_catalog_entry = &TASK_CATALOG[new_active_task->task_id - 1];
@@ -117,7 +116,7 @@ static int rta(ActiveTask *new_active_task){
                 
                 interference += ceill(response_prev / P_j) * C_j;
             }
-            response_time += interference;
+            response_time = C_i + interference;
             
             if(response_time > D_i)
                 return -1;  // unschedulable
@@ -132,7 +131,7 @@ static int rta(ActiveTask *new_active_task){
 
 /*
 Given all the current active tasks tell me if we can schedule
- or not the new task
+ or not a new task
 */
 int is_schedulable(ActiveTask *new_active_task){
     int u = utilization_factor(new_active_task);

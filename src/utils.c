@@ -222,7 +222,7 @@ void print_client_error(const char *format, ...) {
 /*Green for analysis test*/
 void print_analysis(const char *format, ...) {
     // 1. Fast Check: Skip if verbosity level isn't met
-    if (verbose < 2 || format == NULL) return;
+    if (verbose < 4 || format == NULL) return;
 
     pthread_mutex_lock(&log_mutex);
 
@@ -243,22 +243,6 @@ void print_analysis(const char *format, ...) {
     pthread_mutex_unlock(&log_mutex);
 }
 
-void print_printingTASK(const char *format, ...){
-    pthread_mutex_lock(&log_mutex);
-    if (verbose < 0 || format == NULL) return;
-
-// 3. Process formatted parameters directly
-    va_list args;
-    va_start(args, format);
-    vprintf(format, args);
-    va_end(args);
-
-    printf("\n");
-
-    fflush(stdout);
-
-    pthread_mutex_unlock(&log_mutex);
-}
 
 
 /* Receive routine: use recv to receive from socket and manage

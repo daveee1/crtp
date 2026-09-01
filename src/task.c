@@ -1,5 +1,7 @@
 
 #include "headers/task.h"
+#include "headers/rta.h"
+
 
 ActiveTask tasks_active[MAX_NUMBER_ACTIVE_TASKS];
 pthread_mutex_t active_tasks_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -43,9 +45,9 @@ static void run_task4_unlocked(void) {
 // taskid, cpuusage, period, deadline, routine
 const Task TASK_CATALOG[] = {
     {1,  300, 1000, 900, run_task1_unlocked},
-    {2,  150,  500,  350, run_task2_unlocked},
+    {2,  340,  500,  350, run_task2_unlocked},
     {3,   280,  400,  300, run_task3_unlocked},
-    {4,   20,  100,  80, run_task4_unlocked}
+    {4,   70,  100,  80, run_task4_unlocked}
 };
 
 // Pass a local copy array to avoid holding active_tasks_mutex during stdout I/O
@@ -133,6 +135,14 @@ int add_active_task_and_return_position(ActiveTask *new_task) {
         print_server("[tasks_active MUTEX] [CLIENT %d] NO POS in ADD task %d RELEASED", new_task->client_port, new_task->task_id);
         sem_post(&free_slots_sem);
         return -1;
+    }
+
+    if(is_schedulable(new_task)==-1){
+        // Task breaks real-time guarantees: Rollback semaphore and unlock
+        sem_post(&free_slots_sem);
+        print_server("[tasks_active MUTEX] [CLIENT %d] TASK %d UNSCHEDULABLE RELEASED", new_task->client_port, new_task->task_id);
+        pthread_mutex_unlock(&active_tasks_mutex);
+        return -2; // UNSCHEDULABLE
     }
 
     ActiveTask *task = &tasks_active[free_pos];

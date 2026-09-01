@@ -3,7 +3,7 @@
 HOST="localhost"
 PORT=8080
 VERBOSE=3
-HOLD_TIME=0.2
+HOLD_TIME=0.1
 WAIT_TIME=0.3
 
 run_client_session() {
@@ -40,9 +40,9 @@ run_client_session() {
 # Run 10 client sessions in the background
 run_client_session 1  1 2 0 &
 run_client_session 2  2 3 0 &
-run_client_session 3  3 4 0 &
-run_client_session 4  4 1 0 &
-run_client_session 5  1 3 0 &
+#run_client_session 3  3 4 0 &
+#run_client_session 4  4 1 0 &
+#run_client_session 5  1 3 0 &
 # run_client_session 6  2 4 0 &
 # run_client_session 7  4 2 0 &
 # run_client_session 8  1 4 0 &

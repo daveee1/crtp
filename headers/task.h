@@ -9,6 +9,7 @@
 #include <string.h>
 
 
+
 #define MAX_NUMBER_ACTIVE_TASKS 4
 
 
@@ -42,18 +43,8 @@ int find_and_remove_active_task(ActiveTask *at);
 void init_active_tasks();
 int find_free_pos_in_tasksactive();
 
+int is_schedulable(ActiveTask *new_active_task);
 
 
-// TASKS
-/*
-    most complex: 1
-*/ 
-static void run_task1(void);
-static void run_task2(void);
-static void run_task3(void);
-/*
-less complex: 4
-*/ 
-static void run_task4(void);
 
 #endif /* TASK_H */
