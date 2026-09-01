@@ -214,6 +214,7 @@ static void handleConnection(Client *c)
 
             if (!server_shutting_down) {
                 print_server_error("receive failed before command: client %d exited", c->port);
+                break;
             }
             print_server("[CLIENT %d] probably exited", c->port);
             break;
