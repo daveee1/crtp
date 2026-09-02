@@ -16,7 +16,7 @@
 #include <errno.h> 
 
 
-#define MAX_THREADS 10
+#define MAX_NUMBER_OF_CLIENTS 20
 
 typedef struct {
     int socket_fd;
@@ -28,7 +28,7 @@ typedef struct {
 } Client;
 
 // our clients's buffer
-Client clients[MAX_THREADS];
+Client clients[MAX_NUMBER_OF_CLIENTS];
 
 // global variable: if a client wants to close the server
 int close_server = 0;
@@ -287,7 +287,7 @@ static void handleConnection(Client *c)
                     break;
                 }
                 else if(free_pos == -2){
-                    print_server("[CLIENT %d] UNSCHEDULABLE task %d!", c->port, candidate_task.task_id);
+                    // print_server("[CLIENT %d] UNSCHEDULABLE task %d!", c->port, candidate_task.task_id);
                     answer = strdup("FULL CAPACITY tasks_active[]");
                     break;
                 }
@@ -387,7 +387,7 @@ static void *connectionHandler(void *client)
 /* Searches for the first index in 'clients' where active == 0.
    Returns the slot index if found, or -1 if the server is full. */
 static int findFreePosition(void) {
-    for (int i = 0; i < MAX_THREADS; i++) {
+    for (int i = 0; i < MAX_NUMBER_OF_CLIENTS; i++) {
         if (clients[i].active == 0) {
             return i; /* Found an empty slot */
         }
@@ -468,7 +468,7 @@ static void closing_broadcast_to_clients()
     const char *shutdown_msg = "SERVER_SHUTDOWN";
     int msg_len = strlen(shutdown_msg);
 
-    pthread_t threads[MAX_THREADS];
+    pthread_t threads[MAX_NUMBER_OF_CLIENTS];
     int thread_count = 0;
 
     pthread_mutex_lock(&mutex_clients_array);
@@ -480,7 +480,7 @@ static void closing_broadcast_to_clients()
     // Tell every active client to shut down
     // --------------------------------------------------
 
-    for (int i = 0; i < MAX_THREADS; i++) {
+    for (int i = 0; i < MAX_NUMBER_OF_CLIENTS; i++) {
 
         Client *current_client = &clients[i];
 
@@ -560,7 +560,7 @@ static void init_clients_buffer(){
     pthread_mutex_lock(&mutex_clients_array);
     print_server("[CLIENT MUTEX] init clients buffer ACQUIRED ");
     print_server("init CLIENTS BUFFER");
-    for(int i = 0; i < MAX_THREADS; i++)
+    for(int i = 0; i < MAX_NUMBER_OF_CLIENTS; i++)
         init_client(&clients[i]);
     
     print_server("[CLIENT MUTEX] init clients buffer RELEASED ");
@@ -573,7 +573,7 @@ static int check_number_of_active_clients(){
     pthread_mutex_lock(&mutex_clients_array);
     print_server("[CLIENT MUTEX] check clients buffer ACQUIRED ");
     int tot = 0;
-    for(int i = 0; i < MAX_THREADS; i++){
+    for(int i = 0; i < MAX_NUMBER_OF_CLIENTS; i++){
         if(clients[i].active == 1)
             tot++;
     }
@@ -592,7 +592,7 @@ int main(int argc, char *argv[]){
     int sAddrLen;
     struct sockaddr_in sin, retSin;
 
-    pthread_t threads[MAX_THREADS];
+    pthread_t threads[MAX_NUMBER_OF_CLIENTS];
 
     if (argc < 3) {
         print_server_error("[SERVER] ERROR: Not enough arguments. Usage: ./server <PORT> <VERBOSE>");
@@ -636,8 +636,8 @@ int main(int argc, char *argv[]){
         exit(-1);
     }
 
-    // listen and accept MAX_THREADS clients
-    if(listen(server_socket, MAX_THREADS) == -1){
+    // listen and accept MAX_NUMBER_OF_CLIENTS clients
+    if(listen(server_socket, MAX_NUMBER_OF_CLIENTS) == -1){
         print_server_error("LISTEN failed");
         exit(-1);
     }

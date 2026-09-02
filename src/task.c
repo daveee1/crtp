@@ -54,10 +54,10 @@ const Task TASK_CATALOG[] = {
 static void print_active_tasks(int client_port, const ActiveTask snapshot[], int max_tasks) {
     int count = 0;
 
+    printf("[CLIENT %d] printing tasks WAITING\n", client_port);
     pthread_mutex_lock(&log_mutex);
 
-    printf("[CLIENT %d] printing tasks WAITING\n", client_port);
-    printf("[CLIENT %d] printing tasks ACQUIRED\n", client_port);
+    // printf("[CLIENT %d] printing tasks ACQUIRED\n", client_port);
 
     printf("\n+---+------------------+---------+------------------+\n");
     printf("| Slot| Client Port      | TASK_ID | Worker Thread ID |\n");
@@ -116,7 +116,8 @@ int find_free_pos_in_tasksactive(){
 
 /* 
 add new task into 'active_tasks' array.
-[Return] position where the task is stored.
+[Return] position where the task is stored, -1 for full active_tasks, -2 for unschedulable task
+
 */
 int add_active_task_and_return_position(ActiveTask *new_task) {
     if (sem_trywait(&free_slots_sem) != 0) {
@@ -127,7 +128,7 @@ int add_active_task_and_return_position(ActiveTask *new_task) {
     
     pthread_mutex_lock(&active_tasks_mutex);
     
-    print_server("[tasks_active MUTEX] [CLIENT %d] ADD task %d ACQUIRED", new_task->client_port, new_task->task_id);
+    // print_server("[tasks_active MUTEX] [CLIENT %d] ADD task %d ACQUIRED", new_task->client_port, new_task->task_id);
     
     int free_pos = find_free_pos_in_tasksactive();
     if (free_pos == -1) {
@@ -140,7 +141,7 @@ int add_active_task_and_return_position(ActiveTask *new_task) {
     if(is_schedulable(new_task)==-1){
         // Task breaks real-time guarantees: Rollback semaphore and unlock
         sem_post(&free_slots_sem);
-        print_server("[tasks_active MUTEX] [CLIENT %d] TASK %d UNSCHEDULABLE RELEASED", new_task->client_port, new_task->task_id);
+        print_server("[tasks_active MUTEX] [CLIENT %d] ADD task %d RELEASED", new_task->client_port, new_task->task_id);
         pthread_mutex_unlock(&active_tasks_mutex);
         return -2; // UNSCHEDULABLE
     }
@@ -206,9 +207,9 @@ int find_and_remove_active_task(ActiveTask *at){
     // acquire mutex
     pthread_mutex_lock(&active_tasks_mutex);
     
-    print_server("[tasks_active MUTEX] [CLIENT %d] RMV task %d ACQUIRED", 
-        at->client_port,
-        at->task_id);
+    // print_server("[tasks_active MUTEX] [CLIENT %d] RMV task %d ACQUIRED", 
+        // at->client_port,
+        // at->task_id);
 
         
     // scan for all tasks_active, chose the position where the lowest

@@ -137,21 +137,18 @@ int is_schedulable(ActiveTask *new_active_task){
     int u = utilization_factor(new_active_task);
     char s[60];
     if(u == 1){
-        snprintf(s, sizeof(s), "[CLIENT %d] schedulable task %d by Utilization factor", new_active_task->client_port, new_active_task->task_id);
-        print_analysis(s);
+        print_analysis("[CLIENT %d] schedulable task %d by Utilization Factor", new_active_task->client_port, new_active_task->task_id);
         return 1;
     }
 
     else if(u == 0){
         if(rta(new_active_task)){
-            snprintf(s, sizeof(s), "[CLIENT %d] schedulable task %d by RTA", new_active_task->client_port, new_active_task->task_id);
-            print_analysis(s);
+            print_analysis("[CLIENT %d] schedulable task %d by RTA", new_active_task->client_port, new_active_task->task_id);
             return 1;
         }
     }
     
-    snprintf(s, sizeof(s), "[CLIENT %d]NOT SCHEDULABLE task %d", new_active_task->client_port, new_active_task->task_id);
-    print_analysis(s);
+    print_analysis("[CLIENT %d] NOT SCHEDULABLE task %d", new_active_task->client_port, new_active_task->task_id);
     
     return -1;
 }

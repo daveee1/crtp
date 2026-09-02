@@ -3,8 +3,11 @@
 HOST="localhost"
 PORT=8080
 VERBOSE=3
-HOLD_TIME=0.1
+HOLD_TIME=0.01
 WAIT_TIME=0.3
+
+# Set the total number of clients here
+NUM_CLIENTS=100
 
 run_client_session() {
     CLIENT_ID=$1
@@ -24,9 +27,9 @@ run_client_session() {
         echo "b $TASK_A"
         sleep $HOLD_TIME
         echo "b $TASK_B"
-        sleep 5
+        sleep $HOLD_TIME
 
-        # The 10th client sends the global 'stop' command
+        # The last client sends the global 'stop' command
         if [ "$IS_LAST" -eq 1 ]; then
             echo "stop"
             sleep 0.2
@@ -37,21 +40,22 @@ run_client_session() {
     ) | ./build/client $HOST $PORT $VERBOSE
 }
 
-# Run 10 client sessions in the background
-run_client_session 1  1 2 0 &
-run_client_session 2  2 3 0 &
-#run_client_session 3  3 4 0 &
-#run_client_session 4  4 1 0 &
-#run_client_session 5  1 3 0 &
-# run_client_session 6  2 4 0 &
-# run_client_session 7  4 2 0 &
-# run_client_session 8  1 4 0 &
-# run_client_session 9  3 2 0 &
+# Run client sessions dynamically in the background
+for ((i=1; i<=NUM_CLIENTS; i++)); do
+    # Generate dynamic TASK_A and TASK_B (cycling through values 1-4)
+    TASK_A=$(( (i % 4) + 1 ))
+    TASK_B=$(( ((i + 1) % 4) + 1 ))
 
-# 10th client (IS_LAST = 1 -> issues 'stop')
-run_client_session 10 4 3 1 &
+    # Set IS_LAST to 1 for the final client, 0 for all others
+    IS_LAST=0
+    if [ "$i" -eq "$NUM_CLIENTS" ]; then
+        IS_LAST=1
+    fi
+
+    run_client_session $i $TASK_A $TASK_B $IS_LAST &
+done
 
 # Wait for all background client processes to complete
 wait
 
-echo "All 6 client sessions finished."
+echo "All $NUM_CLIENTS client sessions finished."

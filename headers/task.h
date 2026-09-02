@@ -10,7 +10,7 @@
 
 
 
-#define MAX_NUMBER_ACTIVE_TASKS 4
+#define MAX_NUMBER_ACTIVE_TASKS 50
 
 
 
