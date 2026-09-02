@@ -171,7 +171,7 @@ static int rmvclient(Client *client) {
     
     print_server("[CLIENT MUTEX] [CLIENT %d] rmv WAITING ", client->port);
     pthread_mutex_lock(&mutex_clients_array);
-    print_server("[CLIENT MUTEX] [CLIENT %d] rmv ACQUIRED ", client->port);
+    // print_server("[CLIENT MUTEX] [CLIENT %d] rmv ACQUIRED ", client->port);
     
     
     rmvclient_unlocked(client);
@@ -406,7 +406,7 @@ static void addclient(int current_socket, struct sockaddr_in *retSin)
     
     
     pthread_mutex_lock(&mutex_clients_array);
-    print_server("[CLIENT MUTEX] [CLIENT %d] ACQUIRED ", port);
+    // print_server("[CLIENT MUTEX] [CLIENT %d] ACQUIRED ", port);
 
     int free_position = findFreePosition();
 
@@ -558,7 +558,7 @@ static void init_client(Client *c){
 static void init_clients_buffer(){
     print_server("[CLIENT MUTEX] init clients buffer WAITING ");
     pthread_mutex_lock(&mutex_clients_array);
-    print_server("[CLIENT MUTEX] init clients buffer ACQUIRED ");
+    // print_server("[CLIENT MUTEX] init clients buffer ACQUIRED ");
     print_server("init CLIENTS BUFFER");
     for(int i = 0; i < MAX_NUMBER_OF_CLIENTS; i++)
         init_client(&clients[i]);
@@ -571,7 +571,7 @@ static int check_number_of_active_clients(){
 
     print_server("[CLIENT MUTEX] check clients buffer WAITING ");
     pthread_mutex_lock(&mutex_clients_array);
-    print_server("[CLIENT MUTEX] check clients buffer ACQUIRED ");
+    // print_server("[CLIENT MUTEX] check clients buffer ACQUIRED ");
     int tot = 0;
     for(int i = 0; i < MAX_NUMBER_OF_CLIENTS; i++){
         if(clients[i].active == 1)
